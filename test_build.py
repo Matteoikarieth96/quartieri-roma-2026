@@ -98,6 +98,186 @@ def test_copertura_coerente_coi_dati():
     assert all(celle[i + 2] >= d["abitanti_min"] for i in range(0, len(celle), passo))
 
 
+# ---------- Statistiche anonime (Umami) ----------
+
+ID_FINTO = "0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e"
+LINK_FINTO = "https://statistiche.romaquartieri.it/share/abc123/romaquartieri.it"
+
+
+ID_VERO = "e64e0e86-8411-4550-a522-5042428e6f63"
+LINK_VERO = "https://statistiche.romaquartieri.it/share/yOxOhcv40CICQKN3"
+SRI_VERO = "sha384-ZMxgpYfO/phGz4GiYTIZhcauuGKTb2onmOB5gsiigjmBR38DGAmIna5J1Y/dM/13"
+
+
+@pytest.fixture
+def senza_env(monkeypatch):
+    # Nessuna variabile d'ambiente che scavalchi le costanti.
+    monkeypatch.delenv("MAPPA_STATISTICHE_ID", raising=False)
+    monkeypatch.delenv("MAPPA_STATISTICHE_LINK", raising=False)
+    monkeypatch.delenv("MAPPA_STATISTICHE_SRI", raising=False)
+    return monkeypatch
+
+
+@pytest.fixture
+def statistiche(senza_env):
+    # Costanti vuote, come in un fork che le spegne.
+    senza_env.setattr(build, "STATISTICHE_WEBSITE_ID", "")
+    senza_env.setattr(build, "STATISTICHE_LINK_PUBBLICO", "")
+    return senza_env
+
+
+def _template():
+    return (BASE / "mappa-quartieri.template.html").read_text(encoding="utf-8")
+
+
+def _csp():
+    return intestazioni_generali(build.config_vercel(True))["Content-Security-Policy-Report-Only"]
+
+
+def _direttiva(csp, nome):
+    return next(d.strip() for d in csp.split(";") if d.strip().startswith(nome + " "))
+
+
+def test_statistiche_spente_senza_id(statistiche):
+    assert build.tag_statistiche() == ""
+    out = build.applica_statistiche(_template())
+    assert 'id="rq-statistiche"' not in out and "script.js" not in out and "data-website-id" not in out
+    assert "statistiche.romaquartieri.it" not in out
+    assert "<<STATISTICHE" not in out and "<</STATISTICHE" not in out
+    assert "statistiche.romaquartieri.it" not in _csp()
+
+
+def test_statistiche_tag_con_id(statistiche):
+    statistiche.setattr(build, "STATISTICHE_WEBSITE_ID", ID_FINTO)
+    tag = build.tag_statistiche()
+    assert tag.startswith("<script async ") and tag.endswith("></script>") and " defer" not in tag
+    for attributo in ('id="rq-statistiche"', 'src="https://statistiche.romaquartieri.it/script.js"',
+                      'data-website-id="' + ID_FINTO + '"', 'data-domains="romaquartieri.it"',
+                      'data-auto-track="false"', 'data-do-not-track="true"',
+                      'data-exclude-search="true"', 'data-exclude-hash="true"'):
+        assert attributo in tag, attributo
+    out = build.applica_statistiche(_template())
+    testa = out[:out.index("</head>")]
+    assert testa.count(tag) == 1 and out.count('id="rq-statistiche"') == 1
+    # il tag arriva dopo MAPPA_TRACCIA, che ne ascolta il caricamento
+    assert testa.index("window.MAPPA_TRACCIA = function") < testa.index(tag)
+
+
+@pytest.mark.skipif(not build.STATISTICHE_WEBSITE_ID, reason="ID svuotato (fork senza statistiche, vedi README)")
+def test_statistiche_del_repository_accese(senza_env):
+    # Le costanti committate: il sito vero e il link pubblico vero.
+    assert build.STATISTICHE_WEBSITE_ID == ID_VERO and build.STATISTICHE_LINK_PUBBLICO == LINK_VERO
+    tag = build.tag_statistiche()
+    assert 'data-website-id="' + ID_VERO + '"' in tag and 'data-domains="romaquartieri.it"' in tag
+    assert 'data-auto-track="false"' in tag and "data-distinct-id" not in tag and "data-performance" not in tag
+    assert 'integrity="' + SRI_VERO + '"' in tag and 'crossorigin="anonymous"' in tag
+    out = build.applica_statistiche(_template())
+    assert out.count('id="rq-statistiche"') == 1 and out.count('href="' + LINK_VERO + '"') == 1
+    csp = _csp()
+    assert "https://statistiche.romaquartieri.it" in _direttiva(csp, "script-src")
+    assert "https://statistiche.romaquartieri.it" in _direttiva(csp, "connect-src")
+
+
+def test_statistiche_spente_dalla_variabile_d_ambiente(senza_env):
+    # MAPPA_STATISTICHE_ID vuota spegne lo script anche con l'ID nel file (build di prova, fork).
+    senza_env.setenv("MAPPA_STATISTICHE_ID", "")
+    assert build.tag_statistiche() == ""
+    assert "statistiche.romaquartieri.it" not in _csp() and "statistiche.romaquartieri.it" not in build.csp_report_only()
+
+
+def test_statistiche_id_dalla_variabile_d_ambiente(statistiche):
+    statistiche.setenv("MAPPA_STATISTICHE_ID", ID_FINTO)
+    assert ID_FINTO in build.tag_statistiche()
+
+
+def test_statistiche_id_non_valido(statistiche):
+    statistiche.setattr(build, "STATISTICHE_WEBSITE_ID", "non-un-uuid\" onload=\"x")
+    with pytest.raises(SystemExit):
+        build.tag_statistiche()
+
+
+def test_sri_vuoto_niente_integrity(senza_env):
+    senza_env.setattr(build, "STATISTICHE_SRI", "")
+    tag = build.tag_statistiche()
+    assert "integrity=" not in tag and "crossorigin=" not in tag
+
+
+def test_sri_pieno_integrity_e_crossorigin(senza_env):
+    hash_ = "sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC"
+    senza_env.setattr(build, "STATISTICHE_SRI", hash_)
+    tag = build.tag_statistiche()
+    assert 'integrity="' + hash_ + '"' in tag and 'crossorigin="anonymous"' in tag
+    senza_env.setenv("MAPPA_STATISTICHE_ID", "")      # senza ID niente tag, quindi niente integrity
+    assert build.tag_statistiche() == ""
+
+
+def test_sri_dalla_variabile_d_ambiente(senza_env):
+    # MAPPA_STATISTICHE_SRI vuota toglie l'integrity anche con l'hash nel file (dist delle suite).
+    senza_env.setattr(build, "STATISTICHE_SRI", "sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC")
+    senza_env.setenv("MAPPA_STATISTICHE_SRI", "")
+    assert "integrity=" not in build.tag_statistiche() and "crossorigin=" not in build.tag_statistiche()
+
+
+def test_sri_non_valido(senza_env):
+    senza_env.setattr(build, "STATISTICHE_SRI", 'md5-abc" onerror="x')
+    with pytest.raises(SystemExit):
+        build.tag_statistiche()
+
+
+def test_csp_con_le_statistiche(statistiche):
+    statistiche.setattr(build, "STATISTICHE_WEBSITE_ID", ID_FINTO)
+    csp = _csp()
+    for direttiva in ("script-src", "connect-src"):
+        assert "https://statistiche.romaquartieri.it" in _direttiva(csp, direttiva), direttiva
+    assert "statistiche" not in _direttiva(csp, "img-src")
+    assert "tile.openstreetmap.org" in _direttiva(csp, "connect-src")
+
+
+def test_link_statistiche_solo_col_link_pubblico(statistiche):
+    t = _template()
+    assert "Le statistiche sono pubbliche" in t
+    senza = build.applica_statistiche(t)
+    assert "Le statistiche sono pubbliche" not in senza and 'id="ab-statistiche"' not in senza
+    statistiche.setattr(build, "STATISTICHE_LINK_PUBBLICO", LINK_FINTO)
+    con = build.applica_statistiche(t)
+    assert con.count('href="' + LINK_FINTO + '"') == 1 and "Le statistiche sono pubbliche" in con
+    assert "<<STATISTICHE" not in con and "<</STATISTICHE" not in con
+    # il link sta nel pannello "Cos'e'", accanto alla nota sulla privacy
+    pannello = con[con.index('id="about-panel"'):con.index('id="tour-veil"')]
+    assert 'id="ab-statistiche"' in pannello
+    # il link e' indipendente dall'ID: senza ID niente script, ma il link resta
+    assert "data-website-id" not in con
+
+
+def test_link_statistiche_non_https(statistiche):
+    statistiche.setattr(build, "STATISTICHE_LINK_PUBBLICO", "javascript:alert(1)")
+    with pytest.raises(SystemExit):
+        build.applica_statistiche(_template())
+
+
+def test_testo_visibile_delle_statistiche_senza_lineette():
+    t = _template()
+    blocco = t[t.index("<!--<<STATISTICHE_LINK>>-->"):t.index("<!--<</STATISTICHE_LINK>>-->")]
+    assert "—" not in blocco and "--" not in blocco.replace("<!--<<STATISTICHE_LINK>>-->", "")
+    # il commento sopra il blocco esce nell'HTML pubblico: niente "provvisorio"
+    inizio = t.index("<!--<<STATISTICHE_LINK>>-->")
+    assert "provvisori" not in t[inizio - 300:inizio]
+
+
+def test_eventi_agganciati_nel_codice():
+    # Gli undici eventi passano da traccia/MAPPA_TRACCIA, con i nomi concordati.
+    codice = _template() + (BASE / "vista-3d" / "aggancio.js").read_text(encoding="utf-8")
+    for evento in ('"municipio"', '"quartiere"', '"via"', '"ricerca-vuota"', '"servizio"', '"15-minuti"',
+                   '"vista"', '"condividi"', '"dove-sono"', '"intro"', '"link-condiviso"'):
+        assert ("traccia(" + evento) in codice or ("MAPPA_TRACCIA(" + evento) in codice, evento
+    # mai l'hash o la query nell'URL inviato; Global Privacy Control spegne tutto
+    assert "p.url = location.pathname;" in codice
+    assert "navigator.globalPrivacyControl === true" in codice and 'stato = gpc ? "spento"' in codice
+    # il 3D si conta a 3D aperta (in apri3d), non sul clic del tasto
+    assert 'else if (daTasto && aperta) traccia("vista", { modo: "3D" })' in codice
+    assert 'btn3d.addEventListener("click", function () { apri3d(null, true); });' in codice
+
+
 # ---------- Intro: il contorno di Roma ----------
 
 def _municipi():

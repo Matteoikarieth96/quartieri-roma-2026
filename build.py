@@ -43,6 +43,9 @@ Scrive anche dist/vercel.json: dati a parte (strade, servizi, rete) con cache lu
 e immutabile, richiesti dalla mappa con ?v=<hash corto del contenuto> (VERSIONI);
 index.html senza cache lunga; header di sicurezza; noindex anche come header, oltre al meta.
 
+Statistiche anonime (Umami sul nostro server): solo se STATISTICHE_WEBSITE_ID (o la variabile
+MAPPA_STATISTICHE_ID) e' pieno; senza, nel bundle non entra nessuno script di statistiche.
+
 Uso:
     python3 build.py               # anteprima: noindex (meta e header)
     python3 build.py --produzione  # indicizzabile; fallisce se manca data/rete/
@@ -60,6 +63,7 @@ import os
 import re
 import shutil
 import sys
+from html import escape as html_escape
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -127,6 +131,37 @@ MARKER_URBE_LOGO = "<<URBE_LOGO>>"
 MARKER_ICONE_SERVIZI = "/*<<ICONE_SERVIZI>>*/"
 MARKER_VERSIONI = "/*<<VERSIONI>>*/"
 MARKER_INTRO_SVG = "<<INTRO_SVG>>"
+
+# ---------- Statistiche anonime (Umami, sul nostro server) ----------
+# Si accendono solo con l'ID del sito: senza, nel bundle non entra nessuno script di
+# statistiche e la CSP non cita l'host (un fork del repository pubblico esce cosi'). Chi
+# usa un proprio Umami cambia host, ID, link e domini; le variabili d'ambiente
+# MAPPA_STATISTICHE_ID, MAPPA_STATISTICHE_LINK e MAPPA_STATISTICHE_SRI valgono piu' delle costanti.
+STATISTICHE_HOST = "https://statistiche.romaquartieri.it"
+# L'ID del sito in Umami (un UUID). Vuoto = niente statistiche.
+STATISTICHE_WEBSITE_ID = "e64e0e86-8411-4550-a522-5042428e6f63"
+# Il link pubblico di condivisione di Umami. Vuoto = niente link nel pannello "Cos'e'".
+STATISTICHE_LINK_PUBBLICO = "https://statistiche.romaquartieri.it/share/yOxOhcv40CICQKN3"
+# Lo script manda dati solo da questi host (confronto esatto con window.location.hostname,
+# separati da virgola): anteprime, localhost e fork su altri domini non contano mai.
+# www.romaquartieri.it rimanda all'apex con un 308, quindi basta l'apex.
+STATISTICHE_DOMINI = "romaquartieri.it"
+# Subresource Integrity dello script ("sha384-..."): il browser lo esegue solo se il file e'
+# quello. Vuoto = niente attributo integrity. OGNI AGGIORNAMENTO DI UMAMI CAMBIA script.js:
+# va ricalcolato e aggiornato qui nello stesso momento, se no lo script non parte (la mappa
+# resta intatta, le statistiche si fermano). Con l'integrity il tag porta anche
+# crossorigin="anonymous": il server deve mandare Access-Control-Allow-Origin su script.js
+# (Umami lo fa da se' in produzione). Per i test nel browser, che servono uno script vuoto al
+# posto di quello vero, il dist/ si costruisce con MAPPA_STATISTICHE_SRI= (vuota).
+# Umami 3.4.1 (script.js servito dal nostro server, hash uguale prima e dopo un riavvio).
+STATISTICHE_SRI = "sha384-ZMxgpYfO/phGz4GiYTIZhcauuGKTb2onmOB5gsiigjmBR38DGAmIna5J1Y/dM/13"
+# Il tag dello script, in testa al template; il blocco del link (testo nel template) fra i
+# due marker del pannello "Cos'e'", con <<STATISTICHE_URL>> al posto dell'indirizzo.
+MARKER_STATISTICHE_TAG = "<!--<<STATISTICHE_TAG>>-->"
+MARKER_STATISTICHE_LINK = "<!--<<STATISTICHE_LINK>>-->"
+MARKER_STATISTICHE_LINK_FINE = "<!--<</STATISTICHE_LINK>>-->"
+MARKER_STATISTICHE_URL = "<<STATISTICHE_URL>>"
+_RE_UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 
 # Categoria -> file SVG in icone/ (inlinato nel bundle). La categoria
@@ -414,20 +449,77 @@ def hash_corto(files):
     return h.hexdigest()[:10]
 
 
-# CSP in sola segnalazione: pagina con script e stili inline, font in data:, tile
-# OpenStreetMap (immagini e fetch), worker blob: di MapLibre. Niente frame-ancestors: la
-# mappa si puo' incorniciare in altre pagine. Se le tile cambiano fornitore, va cambiato
-# anche l'host qui.
-CSP_REPORT_ONLY = (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' blob:; "
-    "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data: blob: https://tile.openstreetmap.org; "
-    "font-src 'self' data:; "
-    "connect-src 'self' https://tile.openstreetmap.org; "
-    "worker-src 'self' blob:; "
-    "object-src 'none'; base-uri 'self'; form-action 'self'"
-)
+def statistiche_id():
+    # L'ID del sito in Umami ("" = statistiche spente); la variabile d'ambiente vince.
+    valore = os.environ.get("MAPPA_STATISTICHE_ID", STATISTICHE_WEBSITE_ID).strip()
+    if valore and not _RE_UUID.match(valore):
+        raise SystemExit("Errore: l'ID delle statistiche non e' un UUID (" + valore + ").")
+    return valore
+
+
+def statistiche_link():
+    # Il link pubblico alle statistiche ("" = niente link nel pannello).
+    valore = os.environ.get("MAPPA_STATISTICHE_LINK", STATISTICHE_LINK_PUBBLICO).strip()
+    if valore and not re.match(r"^https://[^\s\"'<>]+$", valore):
+        raise SystemExit("Errore: il link delle statistiche deve essere un indirizzo https (" + valore + ").")
+    return valore
+
+
+def tag_statistiche():
+    # Lo script di Umami (attributi letti dalla 3.4), solo con l'ID. async e non defer: un
+    # defer su un altro host terrebbe fermo il DOMContentLoaded (e l'intro, che lo aspetta)
+    # finche' il server risponde. auto-track spento, e non solo auto-pageview: la mappa
+    # riscrive l'hash a ogni scelta (replaceState, pushState entrando in 3D) e con auto-track
+    # acceso il tracker aggancerebbe comunque la cronologia, dove a ogni replaceState sposta
+    # anche il referrer sulla pagina stessa, oltre a un ascoltatore dei clic che qui non
+    # serve. La pagina vista e gli eventi li manda MAPPA_TRACCIA nel template, con l'URL
+    # ridotto al percorso; exclude-search ed exclude-hash restano come seconda rete.
+    sito = statistiche_id()
+    if not sito:
+        return ""
+    attributi = [
+        ("id", "rq-statistiche"),
+        ("src", STATISTICHE_HOST.rstrip("/") + "/script.js"),
+        ("data-website-id", sito),
+        ("data-domains", STATISTICHE_DOMINI),
+        ("data-auto-track", "false"),
+        ("data-do-not-track", "true"),
+        ("data-exclude-search", "true"),
+        ("data-exclude-hash", "true"),
+    ]
+    sri = os.environ.get("MAPPA_STATISTICHE_SRI", STATISTICHE_SRI).strip()
+    if sri:
+        if not re.match(r"^sha(256|384|512)-[A-Za-z0-9+/]+={0,2}$", sri):
+            raise SystemExit("Errore: STATISTICHE_SRI non e' un hash sha256/384/512 in base64 (" + sri + ").")
+        attributi += [("integrity", sri), ("crossorigin", "anonymous")]
+    return "<script async " + " ".join(k + '="' + html_escape(v, quote=True) + '"' for k, v in attributi) + "></script>"
+
+
+def applica_statistiche(html):
+    # Tag in testa (o niente) e blocco del link nel pannello "Cos'e'" (o niente).
+    html = html.replace(MARKER_STATISTICHE_TAG, tag_statistiche())
+    i, j = html.index(MARKER_STATISTICHE_LINK), html.index(MARKER_STATISTICHE_LINK_FINE)
+    link = statistiche_link()
+    blocco = html[i + len(MARKER_STATISTICHE_LINK):j].replace(MARKER_STATISTICHE_URL, html_escape(link, quote=True)) if link else ""
+    return html[:i] + blocco + html[j + len(MARKER_STATISTICHE_LINK_FINE):]
+
+
+def csp_report_only():
+    # CSP in sola segnalazione: pagina con script e stili inline, font in data:, tile
+    # OpenStreetMap (immagini e fetch), worker blob: di MapLibre, e l'host delle statistiche
+    # (script e invio) solo se sono accese. Niente frame-ancestors: la mappa si puo'
+    # incorniciare in altre pagine. Se le tile cambiano fornitore, va cambiato anche l'host qui.
+    stat = (" " + STATISTICHE_HOST.rstrip("/")) if statistiche_id() else ""
+    return (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' blob:" + stat + "; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: https://tile.openstreetmap.org; "
+        "font-src 'self' data:; "
+        "connect-src 'self' https://tile.openstreetmap.org" + stat + "; "
+        "worker-src 'self' blob:; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'"
+    )
 
 
 def config_vercel(produzione=False):
@@ -438,7 +530,7 @@ def config_vercel(produzione=False):
     generale = [
         {"key": "X-Content-Type-Options", "value": "nosniff"},
         {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
-        {"key": "Content-Security-Policy-Report-Only", "value": CSP_REPORT_ONLY},
+        {"key": "Content-Security-Policy-Report-Only", "value": csp_report_only()},
     ]
     if not produzione:
         generale.insert(0, {"key": "X-Robots-Tag", "value": "noindex, nofollow"})
@@ -787,7 +879,8 @@ def main(argv=None):
 
     for marker in (MARKER_FONTS_CSS, MARKER_LEAFLET_CSS, MARKER_LEAFLET_JS, MARKER_QUARTIERI,
                    MARKER_MUNICIPI, MARKER_URBE_LOGO, MARKER_ICONE_SERVIZI, MARKER_VERSIONI,
-                   MARKER_VISTA3D_CSS, MARKER_VISTA3D_JS, MARKER_INTRO_SVG):
+                   MARKER_VISTA3D_CSS, MARKER_VISTA3D_JS, MARKER_INTRO_SVG, MARKER_STATISTICHE_TAG,
+                   MARKER_STATISTICHE_LINK, MARKER_STATISTICHE_LINK_FINE, MARKER_STATISTICHE_URL):
         occorrenze = template.count(marker)
         if occorrenze != 1:
             raise SystemExit(
@@ -796,6 +889,9 @@ def main(argv=None):
             )
 
     output = senza_noindex(template) if produzione else template
+    output = applica_statistiche(output)
+    print("Statistiche: " + ("accese (" + STATISTICHE_HOST + ", solo su " + STATISTICHE_DOMINI + ")" if statistiche_id() else "spente (manca l'ID del sito)")
+          + ", link pubblico " + ("nel pannello." if statistiche_link() else "assente."))
     output = output.replace(MARKER_FONTS_CSS, costruisci_fonts_css())
     output = output.replace(MARKER_LEAFLET_CSS, leaflet_css)
     output = output.replace(MARKER_LEAFLET_JS, escava_chiusura_script(leaflet_js))

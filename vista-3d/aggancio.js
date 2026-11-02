@@ -231,7 +231,13 @@
           mobile: suMobile(),
           // telefono: la card della guida in alto (la camera inquadra sotto)
           alto: spazioGuida3D,
-          onSeleziona: function (s) { viaSegue(s); pendente = s; scriviHash(s); segnaOrigine(s); elencoSegue(s); cornice3d(s); },
+          // ogni scelta fatta in 3D e' un gesto (tocco, etichetta, vista d'insieme): le
+          // statistiche contano municipio e area da qui, come i gestori della 2D
+          onSeleziona: function (s) {
+            if (s.tipo === "municipio") tracciaMunicipio(s.arabo);
+            else if (s.tipo === "area") tracciaArea(entryDi(s.codice));
+            viaSegue(s); pendente = s; scriviHash(s); segnaOrigine(s); elencoSegue(s); cornice3d(s);
+          },
           // nell'area la scheda della 2D (mostraInfo) sopra la 3D; fuori dall'area via
           onArea: schedaArea,
           scheda: function () { return infoPanel.classList.contains("visible") ? infoPanel : null; },
@@ -270,6 +276,9 @@
           onErrore: function (msg, definitivo) { aperta = true; fallisci(msg, definitivo !== false); }
         });
         if (ok === false && aperta) fallisci("La vista 3D non è disponibile su questo dispositivo.", true);
+        // statistiche: il tasto 3D conta solo qui, a 3D aperta davvero (non senza WebGL, non
+        // nella presentazione, non se il caricamento fallisce); la guida e' esclusa da traccia
+        else if (daTasto && aperta) traccia("vista", { modo: "3D" });
       }).catch(function () { if (aperta && giro === giroApertura) fallisci("La vista 3D non si è caricata: riprova più tardi.", false); });
     }
 
@@ -332,7 +341,7 @@
         if (serviziPanelEl) posizionaServiziPanel();
       }
       if (ripristina15 && punto) {
-        q15Attiva(true);
+        q15Attiva(true, true);   // un ripristino: le statistiche non lo contano
         if (punto !== true) q15Piazza(punto, !s);
       }
       if (dopoChiusura) { var f = dopoChiusura; dopoChiusura = null; f(); }
@@ -677,8 +686,10 @@
       vola3d(s); elencoSegue(s);
     };
 
+    // statistiche: il tasto usato davvero (non Esc, non la guida, non i link); il 3D si conta
+    // in apri3d, quando la 3D si e' aperta
     btn3d.addEventListener("click", function () { apri3d(null, true); });
-    btn2d.addEventListener("click", torna2D);
+    btn2d.addEventListener("click", function () { if (aperta) traccia("vista", { modo: "2D" }); torna2D(); });
 
     // In 3D l'elenco, il filtro municipio e la ricerca (aree e vie, vedi mostraVia e
     // selezionaEntry sopra) fanno volare la 3D; la guida e la presentazione riportano in 2D
@@ -692,6 +703,7 @@
       var e = areaDaLi(ev.target);
       if (!e) return false;
       ev.stopPropagation(); ev.preventDefault();
+      tracciaArea(e);
       vola3d({ tipo: "area", codice: e.feature.properties.codice });
       evidenziaLista(e);
       if (suMobile()) chiudiDrawer();
@@ -712,6 +724,7 @@
       if (!aperta || ev.target !== municipioSelect) return;
       ev.stopPropagation();
       var v = municipioSelect.value, dest = v ? { tipo: "municipio", arabo: parseInt(v, 10) } : { tipo: "roma" };
+      if (v && ev.isTrusted) tracciaMunicipio(v);   // la legenda conta da se'
       activeMunicipio = null;   // filtraElenco riapplica sempre il filtro
       elencoSegue(dest);        // menu, filtro e nessuna voce evidenziata, come la 2D
       vola3d(dest);

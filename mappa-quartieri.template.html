@@ -57,7 +57,53 @@
     // l'h1 della testata aspetta il titolo che gli vola incontro.
     if (attiva) document.documentElement.className += " intro-on intro-nasc" + " intro-hh" + (breve ? " intro-breve" : "");
   })();
+  // Statistiche anonime (Umami sul nostro server). Il tag #rq-statistiche, subito sotto, c'e'
+  // solo se il build le accende (build.py, STATISTICHE_WEBSITE_ID) e manda dati solo dal
+  // dominio di produzione. MAPPA_TRACCIA(nome, dati) e' l'unica porta, per 2D, 3D e intro:
+  // mai un'eccezione, mai un'attesa. Finche' lo script (async) non e' arrivato gli eventi
+  // aspettano in coda, al piu' 20; all'arrivo parte la sola pagina vista, poi la coda. La
+  // pagina vista e' una per caricamento (auto-track spento: la mappa riscrive l'hash a ogni
+  // scelta) e l'URL inviato e' solo il percorso: mai l'hash (#via=, #15=) ne' la query.
+  // Global Privacy Control acceso: niente, come Do Not Track (che lo script di Umami legge da
+  // se', ma Safari non lo espone piu').
+  (function () {
+    var gpc = false;
+    try { gpc = navigator.globalPrivacyControl === true; } catch (e) {}
+    var coda = [], stato = gpc ? "spento" : "attesa";   // attesa | pronto | spento
+    function nostro(ev) { return !!(ev && ev.target && ev.target.id === "rq-statistiche"); }
+    function invia(nome, dati) {
+      try {
+        var u = window.umami;
+        if (!u || typeof u.track !== "function") return;
+        u.track(function (base) {
+          var p = {}, k;
+          for (k in base) if (Object.prototype.hasOwnProperty.call(base, k)) p[k] = base[k];
+          p.url = location.pathname;
+          if (nome) { p.name = nome; if (dati) p.data = dati; }
+          return p;
+        });
+      } catch (e) {}
+    }
+    window.MAPPA_TRACCIA = function (nome, dati) {
+      try {
+        if (stato === "pronto") invia(nome, dati);
+        else if (stato === "attesa" && coda.length < 20) coda.push([nome, dati]);
+      } catch (e) {}
+    };
+    // load ed error non risalgono, ma passano dal document in cattura
+    document.addEventListener("load", function (ev) {
+      if (!nostro(ev) || stato !== "attesa") return;
+      stato = "pronto";
+      invia();
+      coda.splice(0).forEach(function (e) { invia(e[0], e[1]); });
+    }, true);
+    document.addEventListener("error", function (ev) { if (nostro(ev)) { stato = "spento"; coda = []; } }, true);
+    document.addEventListener("DOMContentLoaded", function () {
+      if (!document.getElementById("rq-statistiche")) { stato = "spento"; coda = []; }
+    });
+  })();
 </script>
+<!--<<STATISTICHE_TAG>>-->
 <style>
 /*<<FONTS_CSS>>*/
 </style>
@@ -1612,6 +1658,13 @@
     svg.style.setProperty("--L", String(parseFloat(svg.getAttribute("data-anello")) || 1));
 
     function scriviFlag() { try { localStorage.setItem("rq-intro", "1"); } catch (e) {} }
+    // Statistiche: come e' finita l'intro, una volta per caricamento (la guardia non conta).
+    var esitoInviato = false;
+    function esito(e) {
+      if (esitoInviato) return;
+      esitoInviato = true;
+      try { if (window.MAPPA_TRACCIA) window.MAPPA_TRACCIA("intro", { esito: e }); } catch (x) {}
+    }
     function testo(n) {   // rettangolo del testo di un elemento (non del suo contenitore)
       var r = document.createRange(); r.selectNodeContents(n);
       var b = r.getBoundingClientRect();
@@ -1835,6 +1888,7 @@
     function fine() {
       if (finito) return;
       fase = "fine";
+      esito("completa");
       scriviFlag();
       rimuovi();
     }
@@ -1858,6 +1912,7 @@
       if (fase === "fine" || finito) return;
       var prima = fase === "tratto" || fase === "luce" || fase === "posa", p = I.ponte;
       clearTimeout(timer); clearTimeout(rete); clearTimeout(uiT); clearTimeout(fineT);
+      esito("saltata");
       scriviFlag();
       I.saltata = true;
       if (p && prima && p.stato === "pronta") {
@@ -2058,6 +2113,8 @@
     <p>Progetto indipendente: non &egrave; un servizio di Roma Capitale. Per i confini ufficiali vale la deliberazione n. 150/2026.</p>
     <p>Hai trovato un errore (un confine, una via, un servizio chiuso o spostato)? <a href="https://github.com/urbe-hub/quartieri-roma-2026/issues" target="_blank" rel="noopener">Segnalalo su GitHub</a> o scrivi a <a href="mailto:hello@urbe.build?subject=Segnalazione%20mappa%20quartieri">hello@urbe.build</a>. Codice e dati sono pubblici nel <a href="https://github.com/urbe-hub/quartieri-roma-2026" target="_blank" rel="noopener">repository del progetto</a>.</p>
     <p>La tua posizione non lascia il dispositivo. Le tessere della mappa di base arrivano dai server di OpenStreetMap, che vedono l'indirizzo IP di chi visita la pagina.</p>
+    <!-- Statistiche: il build tiene questo blocco solo col link pubblico (build.py, STATISTICHE_LINK_PUBBLICO) -->
+    <!--<<STATISTICHE_LINK>>--><p id="ab-statistiche">Contiamo quante persone usano la mappa e cosa cercano, in forma anonima, senza cookie e senza salvare l'indirizzo IP. <a href="<<STATISTICHE_URL>>" target="_blank" rel="noopener">Le statistiche sono pubbliche</a>.</p><!--<</STATISTICHE_LINK>>-->
     <p>Questa mappa permette di esplorare ogni area, cercarla per nome, trovare in quali aree passa una via, filtrare per tipo e per municipio, e conoscere i dati essenziali. La superficie di ciascuna area &egrave; calcolata dalla geometria a piena risoluzione della fonte; le vie vengono dallo stradario di Roma Capitale.</p>
     <div class="ab-fonti">
       <div class="ab-fonti-t">Fonti</div>
@@ -2311,7 +2368,7 @@
       entries.push(entry);
       // Col calcolo dei 15 minuti acceso il tocco sposta il punto (lo gestisce map.on("click")).
       // Sopra una zona colorata della prima vista il tocco apre la scheda della zona (copTocco).
-      layer.on("click", function (ev) { if (q15.attivo || copTocco(ev.latlng)) return; selezionaEntry(entry, false); });
+      layer.on("click", function (ev) { if (q15.attivo || copTocco(ev.latlng)) return; tracciaArea(entry); selezionaEntry(entry, false); });
       // I poligoni non sono una tappa del Tab: da tastiera si sceglie dall'elenco.
       layer.on("add", function () { var el = layer.getElement && layer.getElement(); if (el) el.setAttribute("tabindex", "-1"); });
       // Col mouse il nome compare al passaggio; sul touch no (il tocco seleziona gia').
@@ -2724,6 +2781,27 @@
   document.addEventListener("keydown", interrompiIngresso, true);
   // ======================================================================
 
+  // --- Statistiche anonime (MAPPA_TRACCIA, in testa al file) ---
+  // Solo gesti veri, nei loro gestori: mai durante la guida o la presentazione (aprono aree,
+  // vie e servizi da sole), mai dai ripristini (hash, avanti e indietro, ritorno dalla 3D),
+  // mai al passaggio del mouse o muovendo la mappa. I valori vengono solo da elenchi chiusi dei
+  // dati (numero romano del municipio, nome dell'area, nome della via dallo stradario, chiave
+  // della categoria): mai il testo scritto nella ricerca, mai coordinate o altro della posizione.
+  function traccia(nome, dati) {
+    try {
+      if (tourAttivo() || presentazioneOn || typeof window.MAPPA_TRACCIA !== "function") return;
+      window.MAPPA_TRACCIA(nome, dati);
+    } catch (e) {}
+  }
+  function tracciaMunicipio(arabo) {
+    var r = municipioRomano[String(arabo)];
+    if (r) traccia("municipio", { municipio: r });
+  }
+  function tracciaArea(entry) {
+    var pr = entry && entry.feature ? entry.feature.properties : null;
+    if (pr && pr.denominazione) traccia("quartiere", { area: pr.denominazione, municipio: romanoDiQuartiere(pr) });
+  }
+
   // --- Selezione ---
   function selezionaEntry(entry, daLista, senzaZoom) {
     if (selectedLayer && selectedLayer !== entry.layer) { quartieriLayer.resetStyle(selectedLayer); applicaRetino(selectedLayer, selectedEntry.feature.properties); }
@@ -2843,7 +2921,18 @@
       clearTimeout(timer);
       timer = setTimeout(function () { btn.textContent = "Condividi"; }, 2000);
     }
+    // Statistiche: cosa si condivide, dall'hash (mai il valore). Con i 15 minuti accesi l'hash
+    // resta #15=, con una via aperta e' quella della via, in 3D #3d/<...>.
+    function cosaCondivisa() {
+      var h = (location.hash || "").replace(/^#/, "");
+      if (/^(3d\/)?via=/.test(h)) return "via";
+      if (/^15=/.test(h)) return "15-minuti";
+      if (/^3d\/municipio-/.test(h)) return "municipio";
+      if (/^3d\/./.test(h) || (h && !/^(3d|copertura|presentazione)$/.test(h))) return "area";
+      return "pagina";
+    }
     btn.addEventListener("click", function () {
+      traccia("condividi", { cosa: cosaCondivisa() });
       var nome = document.getElementById("info-denominazione").textContent;
       if (navigator.share) {
         navigator.share({ title: nome + " · Quartieri di Roma 2026", url: location.href }).catch(function () {});
@@ -3016,8 +3105,11 @@
   // --- Filtro municipio ---
   var municipioSelect = document.getElementById("municipio-select");
   municipiOrdinati.forEach(function (m) { var opt = document.createElement("option"); opt.value = String(m.arabo); opt.textContent = "Municipio " + m.romano; municipioSelect.appendChild(opt); });
-  municipioSelect.addEventListener("change", function () {
+  municipioSelect.addEventListener("change", function (ev) {
     activeMunicipio = municipioSelect.value; applicaFiltri(); aggiornaRollup();
+    // statistiche: solo la scelta fatta a mano nel menu (la legenda conta da se', i
+    // cambi mandati dal codice non sono isTrusted)
+    if (activeMunicipio && ev && ev.isTrusted) tracciaMunicipio(activeMunicipio);
     if (activeMunicipio) { evidenziaInset(activeMunicipio); zoomAMunicipio(activeMunicipio); }
     else { if (!selectedEntry) evidenziaInset(null); rimuoviIngresso(); vistaInsieme(); }
     aggiornaReset();
@@ -3105,15 +3197,28 @@
       if (dest) { e.preventDefault(); dest.focus(); }
     } else if (e.key === "Enter") {
       var uguale = entries.filter(function (x) { return x.nomeLower === testoRicerca && activeTipi[x.feature.properties.tipo] && (!activeMunicipio || String(x.feature.properties.municipio_num_arabo) === activeMunicipio); })[0];
-      if (uguale) { e.preventDefault(); selezionaEntry(uguale, true); return; }
+      if (uguale) { e.preventDefault(); tracciaArea(uguale); selezionaEntry(uguale, true); return; }
       var primo = primaAreaRicerca() || primaVia || primaAreaVisibile();
       if (primo) { e.preventDefault(); primo.click(); }
+      else ricercaVuota();
     } else if (e.key === "Escape" && searchEl.value) {
       e.preventDefault(); e.stopPropagation();
       searchEl.value = "";
       searchEl.dispatchEvent(new Event("input"));
     }
   });
+  // Statistiche: una ricerca finita senza nulla (ne' aree ne' vie, stradario caricato, almeno
+  // 3 lettere), all'Invio o quando il campo perde il fuoco, una volta per testo: mai a ogni
+  // tasto. Il testo resta qui (serve solo a non contare due volte): non esce dal browser.
+  var ricercaVuotaContata = "";
+  function ricercaVuota() {
+    var t = foldAccenti(searchEl.value.trim());
+    if (t.length < 3 || t === ricercaVuotaContata || vieStato !== "ok" || nAreeVisibili > 0) return;
+    if (streetEl.querySelector("button") || (cercaAreeEl && cercaAreeEl.querySelector("button"))) return;
+    ricercaVuotaContata = t;
+    traccia("ricerca-vuota");
+  }
+  searchEl.addEventListener("blur", ricercaVuota);
   // Frecce fra i risultati per via; dalla prima, freccia su torna al campo.
   streetEl.addEventListener("keydown", function (e) {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -3232,7 +3337,7 @@
       b.type = "button"; b.setAttribute("data-via", v.nome);
       b.innerHTML = '<span class="sr-nome">' + escapeHtml(v.nome) + '</span><span class="sr-aree">' +
         escapeHtml(nomi.slice(0, 3).join(" · ") + (nomi.length > 3 ? " e altre " + (nomi.length - 3) : "")) + "</span>";
-      b.addEventListener("click", function () { mostraVia(v); });
+      b.addEventListener("click", function () { traccia("via", { via: v.nome }); mostraVia(v); });
       streetEl.appendChild(b);
     });
     return Math.min(trovate.length, VIE_MAX);
@@ -3356,7 +3461,7 @@
       var b = document.createElement("button");
       b.type = "button"; b.textContent = e.feature.properties.denominazione; b.setAttribute("data-codice", c);
       if (c === props.codice) { b.className = "on"; b.setAttribute("aria-current", "true"); }
-      b.addEventListener("click", function () { selezionaEntry(e, false); });
+      b.addEventListener("click", function () { tracciaArea(e); selezionaEntry(e, false); });
       wrap.appendChild(b);
     });
     box.hidden = false;
@@ -3372,7 +3477,7 @@
     var p = entry.feature.properties, li = document.createElement("li"), col = colorMunicipio(p.municipio_num_arabo);
     li.innerHTML = '<button type="button" class="voce" tabindex="-1"><span class="nome"><span class="swatch" style="background:' + col + '"></span>' + escapeHtml(p.denominazione) + '</span>' +
       '<span class="meta">Municipio ' + escapeHtml(romanoDiQuartiere(p)) + " &middot; " + escapeHtml(TIPO_SINGOLARE[p.tipo] || p.tipo) + '</span></button>';
-    li.addEventListener("click", function () { selezionaEntry(entry, true); });
+    li.addEventListener("click", function () { tracciaArea(entry); selezionaEntry(entry, true); });
     entry.li = li; entry.nomeLower = foldAccenti(p.denominazione);
     // Alias di ricerca: "Lido di Ostia" non esiste come area (suddivisione 2026 =
     // Ostia Levante / Ostia Ponente); lo agganciamo alle due Ostia come comodita'.
@@ -3447,7 +3552,7 @@
     var item = document.createElement("div"); item.className = "leg-item";
     item.innerHTML = '<span class="leg-swatch" style="background:' + colorMunicipio(m.arabo) + '"></span><span class="leg-label">Mun. ' + escapeHtml(m.romano) + '</span>';
     item.style.cursor = "pointer"; item.tabIndex = 0; item.setAttribute("role", "button");
-    function selezionaMun() { municipioSelect.value = String(m.arabo); municipioSelect.dispatchEvent(new Event("change")); }
+    function selezionaMun() { tracciaMunicipio(m.arabo); municipioSelect.value = String(m.arabo); municipioSelect.dispatchEvent(new Event("change")); }
     item.addEventListener("click", selezionaMun);
     item.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); selezionaMun(); } });
     legendBody.appendChild(item);
@@ -3680,9 +3785,11 @@
     return vicina;
   }
   var puntoLayer = L.layerGroup().addTo(map);
+  // Statistiche: solo l'esito (ok, negato, errore), mai la posizione ne' l'area trovata.
   function trovaPosizione() {
-    if (!navigator.geolocation) { avviso("Posizione non disponibile."); return; }
+    if (!navigator.geolocation) { traccia("dove-sono", { esito: "errore" }); avviso("Posizione non disponibile."); return; }
     navigator.geolocation.getCurrentPosition(function (pos) {
+      traccia("dove-sono", { esito: "ok" });
       var ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
       var e = areaDelPunto(ll);
       puntoLayer.clearLayers();
@@ -3690,6 +3797,7 @@
       if (q15.attivo) { q15Piazza(ll, true); return; }
       posizioneTrovata(e, ll);
     }, function (err) {
+      traccia("dove-sono", { esito: err && err.code === 1 ? "negato" : "errore" });
       avviso(err && err.code === 1 ? "Permesso negato: attivalo nelle impostazioni del browser." : "Posizione non disponibile.");
     }, { timeout: 10000, maximumAge: 0 });
   }
@@ -4111,7 +4219,10 @@
     q15Calcola(ll, inquadra !== false);
   }
 
-  function q15Attiva(silenzioso) {
+  // ripristino: riaccesa dal codice (link #15=, avanti e indietro, ritorno dalla 3D), non
+  // dalla persona: le statistiche contano solo l'accensione vera, una per volta.
+  function q15Attiva(silenzioso, ripristino) {
+    if (!q15.attivo && !ripristino) traccia("15-minuti");
     // Il buio dell'ingresso coprirebbe l'alone dei 15 minuti: si spegne (la selezione
     // resta) e torna, senza volo, alla chiusura. Prima di accendere la modalita': coi
     // 15 minuti accesi il focus non tocca piu' i servizi.
@@ -4502,6 +4613,7 @@
           // area di un altro municipio: il filtro passa al suo, se no resterebbe nascosta
           var m = String(p.municipio_num_arabo);
           if (activeMunicipio && activeMunicipio !== m) { municipioSelect.value = m; activeMunicipio = m; applicaFiltri(); aggiornaRollup(); }
+          tracciaArea(e);
           selezionaEntry(e, true);
         });
         dove.appendChild(b);
@@ -4681,8 +4793,8 @@
         setTimeout(function () { avviso(VERSIONI.rete ? "Il punto del link è fuori Roma." : "Il calcolo a piedi non è disponibile."); }, avvio ? 800 : 0);
         return;
       }
-      if (!avvio) { q15Attiva(true); q15Piazza(ll15, true); return; }
-      new Promise(function (ok) { map.once("moveend", ok); setTimeout(ok, 700); }).then(function () { q15Attiva(true); q15Piazza(ll15, true); });
+      if (!avvio) { q15Attiva(true, true); q15Piazza(ll15, true); return; }
+      new Promise(function (ok) { map.once("moveend", ok); setTimeout(ok, 700); }).then(function () { q15Attiva(true, true); q15Piazza(ll15, true); });
       return;
     }
     if (h.indexOf("via=") === 0) {
@@ -4704,6 +4816,25 @@
       if (selectedEntry !== e) selezionaEntry(e, false);
     }
   }
+  // Statistiche: pagina aperta da un link con lo stato nell'hash. Solo il tipo, mai il valore;
+  // un ricaricamento o avanti e indietro non contano (l'hash l'ha scritto la mappa stessa).
+  (function () {
+    var h = leggiHash(), tipo = null, nav = null;
+    if (!h) return;
+    try {
+      var voce = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
+      nav = voce ? voce.type : (performance.navigation && performance.navigation.type === 1 ? "reload" : (performance.navigation && performance.navigation.type === 2 ? "back_forward" : "navigate"));
+    } catch (e) {}
+    if (nav === "reload" || nav === "back_forward") return;
+    if (/^(3d\/)?via=/.test(h)) tipo = "via";
+    else if (/^15=/.test(h)) tipo = "15-minuti";
+    else if (/^3d\/municipio-\d+$/.test(h)) tipo = "municipio";
+    else if (h === "3d") tipo = "3d";
+    else if (h === "presentazione" || h === "copertura") tipo = h;
+    else if (entryDiCodice(h.replace(/^3d\//, ""))) tipo = "area";
+    else tipo = "altro";
+    try { window.MAPPA_TRACCIA("link-condiviso", { tipo: tipo }); } catch (e) {}
+  })();
   apriDaHash(leggiHash(), true);
   copCarica();
   map.whenReady(function () { setTimeout(applicaRetinoTutti, 60); });
@@ -5968,6 +6099,9 @@
   function apriSchedaServizio(props, latlng, ancora, opz) {
     var s = schedaSrv, el = schedaSrvEl;
     if (!props || (tourAttivo() && !tour3D)) return;   // la guida della 3D ne apre una lei
+    // statistiche: la categoria di un servizio del registro (2D e 3D passano tutte da qui);
+    // la scheda di una zona della prima vista (opz.html) non e' un servizio
+    if (!(opz && opz.html) && Object.prototype.hasOwnProperty.call(SERVIZI_PER_CHIAVE, props.categoria)) traccia("servizio", { tipo: props.categoria });
     if (s.aperta) spegniAncoraScheda();
     else s.prec = el.contains(document.activeElement) ? null : document.activeElement;
     s.props = props; s.ll = latlng; s.ancora = ancora || null; s.opz = opz || null; s.aperta = true;

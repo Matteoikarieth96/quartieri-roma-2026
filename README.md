@@ -17,6 +17,7 @@ Con la versione del 2 novembre 2026:
 - in 3D abbiamo corretto il cambio d'area e lo sfarfallio delle pareti
 - 81 servizi doppi in meno, controllati da `test_accorpamento.py`
 - la copertura dei 15 minuti a esagoni è pronta ma spenta (vedi "La città dei 15 minuti")
+- contiamo quante persone usano la mappa e cosa cercano, in forma anonima con Umami su un server di Urbe Hub, senza cookie e senza salvare l'indirizzo IP; la panoramica delle visite è pubblica, dal link nel pannello "Cos'è" (vedi "Statistiche")
 
 Con la versione del 31 ottobre 2026 sono arrivate le farmacie dall'anagrafe del Ministero della Salute, la ricerca delle vie anche col civico, le avvertenze nelle schede di farmacie e pronto soccorso e le correzioni allo stradario. Sono partite dalla [PR #1](https://github.com/urbe-hub/quartieri-roma-2026/pull/1) di Matteo ([@Matteoikarieth96](https://github.com/Matteoikarieth96)): grazie Matteo!
 
@@ -24,7 +25,7 @@ Con la versione del 31 ottobre 2026 sono arrivate le farmacie dall'anagrafe del 
 
 Un confine, una via o un servizio sbagliati, chiusi o spostati: apri una [issue](https://github.com/urbe-hub/quartieri-roma-2026/issues) (o scrivi a hello@urbe.build) indicando l'area o l'indirizzo e, se puoi, la fonte corretta. Le correzioni ai dati passano dagli script descritti in "Dati e rigenerazione".
 
-Il risultato del build è una cartella statica: nessun server applicativo, nessun database, nessun cookie e nessun servizio di statistiche.
+Il risultato del build è una cartella statica: nessun server applicativo, nessun database e nessun cookie. Le visite si contano in forma anonima con Umami, installato su un server di Urbe Hub, solo sul dominio di produzione, e la panoramica delle visite è pubblica (vedi "Statistiche").
 
 ## Come si costruisce
 
@@ -98,13 +99,41 @@ pip install -r requirements-dev.txt
 python3 -m pytest -q
 ```
 
-I test unitari verificano il build: il meta noindex e l'header X-Robots-Tag in anteprima e in produzione, gli header di sicurezza, il fallimento del build di produzione senza `data/rete/`, la presenza dei file di licenza e l'accorpamento dei servizi doppi (`test_accorpamento.py`, sui casi trovati e sul `data/servizi/servizi.json` scritto). Il controllo sul bundle `check_zero_footprint.py` (termini vietati, eccezioni per gli omonimi, file di termini locale facoltativo) lo esegue il build sul file finale.
+I test unitari verificano il build: il meta noindex e l'header X-Robots-Tag in anteprima e in produzione, gli header di sicurezza, il fallimento del build di produzione senza `data/rete/`, la presenza dei file di licenza, le statistiche (nessuno script senza ID, gli attributi del tag, la CSP, il link solo col link pubblico) e l'accorpamento dei servizi doppi (`test_accorpamento.py`, sui casi trovati e sul `data/servizi/servizi.json` scritto). Il controllo sul bundle `check_zero_footprint.py` (termini vietati, eccezioni per gli omonimi, file di termini locale facoltativo) lo esegue il build sul file finale.
 
 ## Pubblicare
 
 `dist/` è una cartella statica: va caricata per intero su un hosting statico (Vercel, Netlify, Cloudflare Pages, S3 con CDN e simili). Il bundle carica strade, servizi e rete con un parametro `?v=<hash>`: quei file si possono servire con cache lunga e immutabile, mentre `index.html` va servito con revalidazione. Chi non usa Vercel deve riprodurre a mano gli header di `dist/vercel.json`.
 
 La pagina si può incorporare in un iframe: non è imposto alcun blocco al framing.
+
+## Statistiche
+
+La mappa conta le visite in forma anonima con [Umami](https://umami.is), installato su un server di Urbe Hub (`statistiche.romaquartieri.it`): niente cookie, niente dati salvati nel browser di chi visita, nessun servizio di terzi. La panoramica delle visite è pubblica (visitatori, pagine viste, provenienze, dispositivi, paesi e città) e il link sta nel pannello "Cos'è". Gli eventi elencati più sotto li vediamo solo noi.
+
+La configurazione sta in testa a `build.py`:
+
+- `STATISTICHE_HOST`: il server di Umami (lo script è `<host>/script.js`);
+- `STATISTICHE_WEBSITE_ID`: l'ID del sito in Umami. Vuoto, il build non mette nella pagina nessuno script di statistiche e la CSP non cita l'host;
+- `STATISTICHE_LINK_PUBBLICO`: il link pubblico alle statistiche. Vuoto, il pannello non mostra il link (il testo del link è nel template, fra i marker `STATISTICHE_LINK`);
+- `STATISTICHE_DOMINI`: gli host da cui lo script manda dati (`data-domains`). Le anteprime, `localhost` e le copie pubblicate su altri domini non mandano nulla.
+
+Con `STATISTICHE_SRI` pieno il tag porta anche `integrity` e `crossorigin="anonymous"`: a ogni aggiornamento di Umami `script.js` cambia e l'hash va aggiornato nello stesso momento, se no le statistiche si fermano (la mappa no).
+
+Le variabili d'ambiente `MAPPA_STATISTICHE_ID`, `MAPPA_STATISTICHE_LINK` e `MAPPA_STATISTICHE_SRI` valgono più delle costanti, per un build senza toccare il file. Chi fa un fork e non vuole statistiche svuota l'ID (o costruisce con `MAPPA_STATISTICHE_ID=` vuota); chi usa un proprio Umami cambia host, ID, link e domini. Anche senza svuotarlo, una copia su un altro dominio non manda nulla (`data-domains`).
+
+Lo script si carica `async` (un server lento non ferma la pagina né l'intro), rispetta Do Not Track (`data-do-not-track`) e ha `data-auto-track="false"` (attributi letti da Umami 3.4): la mappa tiene lo stato nell'hash (`#via=`, `#15=`, `#3d/...`) e lo riscrive a ogni scelta, quindi la pagina vista e gli eventi li manda la pagina stessa, da `MAPPA_TRACCIA` nel template. Una pagina vista per caricamento, con l'indirizzo ridotto al percorso: mai l'hash né la query.
+
+Gli eventi non portano mai testo scritto da chi visita né la sua posizione, solo valori da elenchi chiusi:
+
+- `municipio` (numero romano), `quartiere` (nome dell'area e municipio), `via` (nome dallo stradario), `servizio` (categoria);
+- `ricerca-vuota` (una ricerca senza risultati, senza il testo), `15-minuti` (la modalità accesa), `vista` (3D o 2D, dal tasto);
+- `condividi` (cosa: area, via, 15-minuti, municipio, pagina), `dove-sono` (solo l'esito: ok, negato, errore), `intro` (completa o saltata);
+- `link-condiviso` (la pagina aperta da un link, solo il tipo: area, via, 15-minuti, municipio, 3d, presentazione, copertura, altro; un ricaricamento o avanti e indietro non contano).
+
+Con Global Privacy Control acceso la pagina non manda nulla, come con Do Not Track.
+
+Si contano solo i gesti veri: non la guida alla mappa, non la presentazione, non le aperture da un link o da avanti e indietro.
 
 ## Dati e rigenerazione
 
@@ -120,7 +149,7 @@ Nella fonte GeoRoma sette nomi di quartiere usano l'apostrofo al posto dell'acce
 
 ## Fonti e licenze
 
-Il codice è sotto licenza MIT (vedi `LICENSE`). I dati, le librerie e i font hanno ciascuno la propria licenza, elencata in `THIRD_PARTY.md`: GeoRoma di Roma Capitale, OpenStreetMap (ODbL), Ministero dell'Istruzione e del Merito (IODL 2.0), Ministero della Salute (IODL 2.0), AGENAS, Regione Lazio, GHS-POP della Commissione europea (CC BY 4.0), Leaflet, MapLibre GL e il font Montserrat. Il nome e il logo di Urbe Hub, anche nell'immagine per i social, non sono coperti dalla licenza MIT.
+Il codice è sotto licenza MIT (vedi `LICENSE`). I dati, le librerie e i font hanno ciascuno la propria licenza, elencata in `THIRD_PARTY.md`: GeoRoma di Roma Capitale, OpenStreetMap (ODbL), Ministero dell'Istruzione e del Merito (IODL 2.0), Ministero della Salute (IODL 2.0), AGENAS, Regione Lazio, GHS-POP della Commissione europea (CC BY 4.0), Leaflet, MapLibre GL, il font Montserrat e lo script delle statistiche (Umami). Il nome e il logo di Urbe Hub, anche nell'immagine per i social, non sono coperti dalla licenza MIT.
 
 ## Mappa di base
 

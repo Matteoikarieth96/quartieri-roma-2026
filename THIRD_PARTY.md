@@ -28,6 +28,7 @@ Le condizioni di ciascun materiale sono qui sotto.
 | Leaflet | `vendor/leaflet.js`, `vendor/leaflet.css`, licenza in `vendor/leaflet/LICENSE` | BSD 2-Clause |
 | MapLibre GL JS 4.7.1 | `vendor/maplibre-gl/`, licenza in `vendor/maplibre-gl/LICENSE.txt` | BSD 3-Clause |
 | Montserrat | `vendor/fonts/montserrat-latin.woff2`, licenza in `vendor/fonts/OFL.txt` | SIL Open Font License 1.1 |
+| Umami (script delle statistiche) | non nel repository: caricato dal browser da `statistiche.romaquartieri.it`, server di Urbe Hub, solo se il build ha l'ID del sito (vedi README, "Statistiche") | MIT |
 
 ## Marchi
 
