@@ -19,21 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Scope of this license
-
-This license covers only the source code of this repository: the build and
-data-preparation scripts, the HTML template, the JavaScript and CSS written for
-this project, and the tests.
-
-It does not cover:
-
-- the data in data/ and the network built from it, which come from third
-  parties under their own terms;
-- the libraries and fonts in vendor/, which keep their own licenses;
-- the name "Urbe Hub" and the Urbe Hub logo (brand/urbe-hub-donor.png), which
-  are not licensed for reuse.
-
-The terms of the third-party material are listed in THIRD_PARTY.md.

@@ -1,6 +1,12 @@
 # Materiali di terzi
 
-La licenza MIT di questo repository (`LICENSE`) copre solo il codice. Dati, librerie, font e marchi qui sotto seguono le condizioni dei rispettivi titolari.
+La licenza MIT di questo repository (`LICENSE`) copre solo il codice sorgente: gli script di build e di preparazione dei dati, il template HTML, il JavaScript e il CSS scritti per questo progetto e i test. Non copre:
+
+- i dati in `data/` e la rete pedonale ricavata da quei dati, che vengono da terzi con le loro condizioni
+- le librerie e i font in `vendor/`, che tengono le proprie licenze
+- il nome "Urbe Hub" e il suo logo (`brand/urbe-hub-donor.png`, anche dentro `brand/og.png`), che non sono concessi per il riuso
+
+Le condizioni di ciascun materiale sono qui sotto.
 
 ## Dati
 
