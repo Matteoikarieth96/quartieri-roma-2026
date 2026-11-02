@@ -26,6 +26,10 @@ Consuma SOLO input dentro questa cartella:
                                              git: prepara_rete_pedonale.py; senza, la mappa
                                              esce senza "A piedi in 15 minuti", e con
                                              --produzione la build fallisce)
+  - data/copertura/copertura.json           (minuti a piedi ai servizi essenziali per
+                                             esagono abitato, prima vista della 2D:
+                                             prepara_copertura_15_minuti.py; copiato
+                                             accanto al bundle; senza, niente strato)
   - icone/*.svg                             (icone dei servizi, tessere da app con
                                              l'illustrazione centrata: inlinate nel bundle,
                                              una per categoria, vedi CATEGORIA_ICONA; si
@@ -51,6 +55,7 @@ import contextlib
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -88,6 +93,12 @@ OFL_OUT = DIST_DIR / "OFL.txt"
 META_NOINDEX = '<meta name="robots" content="noindex, nofollow">'
 RETE_SRC = SCRIPT_DIR / "data" / "rete"
 RETE_OUT = DIST_DIR / "rete"
+# Prima vista della 2D: dove i servizi essenziali non si raggiungono a piedi in 15 minuti
+# (prepara_copertura_15_minuti.py). Senza il file la mappa esce senza quello strato.
+COPERTURA_SRC = SCRIPT_DIR / "data" / "copertura" / "copertura.json"
+COPERTURA_OUT = DIST_DIR / "copertura"
+# Spenta in questo rilascio: il codice resta, la build esce come senza il file. Torna con True.
+COPERTURA_NEL_RILASCIO = False
 # I 15 minuti leggono lo stesso data/servizi/servizi.json del focus:
 # dist/servizi-15-minuti.json non esiste piu' (si toglie se e' rimasto li').
 QUINDICI_VECCHIO_OUT = DIST_DIR / "servizi-15-minuti.json"
@@ -115,6 +126,7 @@ MARKER_MUNICIPI = "/*<<MUNICIPI>>*/"
 MARKER_URBE_LOGO = "<<URBE_LOGO>>"
 MARKER_ICONE_SERVIZI = "/*<<ICONE_SERVIZI>>*/"
 MARKER_VERSIONI = "/*<<VERSIONI>>*/"
+MARKER_INTRO_SVG = "<<INTRO_SVG>>"
 
 
 # Categoria -> file SVG in icone/ (inlinato nel bundle). La categoria
@@ -233,6 +245,167 @@ def compatta_feature_collection(geojson):
     return compatte
 
 
+def semplifica(punti, tolleranza):
+    # Douglas-Peucker iterativo su [(x, y), ...]: tiene primo e ultimo punto.
+    if len(punti) < 3:
+        return punti
+    tieni = [False] * len(punti)
+    tieni[0] = tieni[-1] = True
+    pila = [(0, len(punti) - 1)]
+    while pila:
+        a, b = pila.pop()
+        (ax, ay), (bx, by) = punti[a], punti[b]
+        dx, dy = bx - ax, by - ay
+        lung = math.hypot(dx, dy) or 1e-9
+        peggiore, indice = 0.0, None
+        for i in range(a + 1, b):
+            px, py = punti[i]
+            d = abs(dy * (px - ax) - dx * (py - ay)) / lung
+            if d > peggiore:
+                peggiore, indice = d, i
+        if indice is not None and peggiore > tolleranza:
+            tieni[indice] = True
+            pila += [(a, indice), (indice, b)]
+    return [q for q, k in zip(punti, tieni) if k]
+
+
+def contorno_unione(municipi_geojson):
+    # Contorno di Roma come unione dei 15 municipi, in gradi (lon, lat), senza i confini
+    # interni. Niente shapely: i confini dei municipi coincidono vertice per vertice (con
+    # qualche scheggia), quindi basta lavorare sugli spigoli. Ogni anello e' orientato
+    # (esterni antiorari, buchi orari) e i suoi spigoli diventano spigoli orientati; uno
+    # spigolo condiviso fra due municipi compare due volte, una per verso, e le due copie
+    # si annullano: restano solo gli spigoli del bordo. Si concatenano in anelli e, ai nodi
+    # con piu' uscite (dove due pezzi si toccano in un punto), si prende la svolta piu' a
+    # destra rispetto allo spigolo d'arrivo: gli anelli escono separati, mai incrociati.
+    # Si tengono gli anelli antiorari piu' grandi di una scheggia: il contorno principale
+    # e l'isola amministrativa del Municipio XV; il buco del Vaticano e le schegge cadono.
+    def arrotonda(c):
+        return (round(c[0], 6), round(c[1], 6))
+
+    def area_con_segno(pts):
+        return sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1]
+                   for i in range(len(pts))) / 2.0
+
+    spigoli = {}
+    for f in municipi_geojson["features"]:
+        g = f["geometry"]
+        poligoni = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
+        for pol in poligoni:
+            for n_anello, anello in enumerate(pol):
+                pts = []
+                for c in anello:
+                    p = arrotonda(c)
+                    if not pts or p != pts[-1]:
+                        pts.append(p)
+                if len(pts) > 1 and pts[0] == pts[-1]:
+                    pts.pop()
+                if len(pts) < 3:
+                    continue
+                if (area_con_segno(pts) > 0) != (n_anello == 0):
+                    pts.reverse()
+                for i in range(len(pts)):
+                    a, b = pts[i], pts[(i + 1) % len(pts)]
+                    if spigoli.get((b, a), 0) > 0:
+                        spigoli[(b, a)] -= 1
+                    else:
+                        spigoli[(a, b)] = spigoli.get((a, b), 0) + 1
+
+    uscite = {}
+    for (a, b), n in spigoli.items():
+        for _ in range(n):
+            uscite.setdefault(a, []).append(b)
+
+    anelli = []
+    while uscite:
+        inizio = next(iter(uscite))
+        anello, prec, cur = [inizio], None, inizio
+        while True:
+            cand = uscite.get(cur)
+            if not cand:
+                break
+            if len(cand) == 1 or prec is None:
+                nxt = cand[0]
+            else:
+                # svolta piu' a destra = angolo con segno minimo fra spigolo d'arrivo e d'uscita
+                din = (cur[0] - prec[0], cur[1] - prec[1])
+                nxt = min(cand, key=lambda c: math.atan2(din[0] * (c[1] - cur[1]) - din[1] * (c[0] - cur[0]),
+                                                         din[0] * (c[0] - cur[0]) + din[1] * (c[1] - cur[1])))
+            cand.remove(nxt)
+            if not cand:
+                del uscite[cur]
+            prec, cur = cur, nxt
+            if cur == inizio:
+                break
+            anello.append(cur)
+        if len(anello) >= 3 and area_con_segno(anello) > 1e-4:
+            anelli.append(anello)
+    anelli.sort(key=lambda a: -area_con_segno(a))
+    return anelli
+
+
+# Dove parte il tratto dell'intro: la foce del Tevere (Ostia).
+FOCE_TEVERE = (12.2385, 41.7300)
+
+
+def costruisci_intro_svg(municipi_geojson, larghezza=1000):
+    # Contorno di Roma (unione dei 15 municipi, un tratto solo) per l'intro animata, gia'
+    # proiettato in Web Mercator (la stessa proiezione di Leaflet e della 3D): cosi' il
+    # disegno si posa esatto sulla mappa vera. Il riquadro e' quello dei municipi, che
+    # coincide con quello dell'unione. Resta dentro il primo pezzo del body, prima dei
+    # dati: leggere ~3 KB non ritarda nulla e l'intro parte mentre il resto del file si
+    # carica.
+    def proietta(lon, lat):
+        return lon, math.degrees(math.log(math.tan(math.pi / 4 + math.radians(lat) / 2)))
+
+    anelli = [[proietta(*p) for p in anello] for anello in contorno_unione(municipi_geojson)]
+    tutti = []
+    for f in municipi_geojson["features"]:
+        g = f["geometry"]
+        poligoni = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
+        tutti += [proietta(*c[:2]) for pol in poligoni for anello in pol for c in anello]
+    minx, maxx = min(p[0] for p in tutti), max(p[0] for p in tutti)
+    miny, maxy = min(p[1] for p in tutti), max(p[1] for p in tutti)
+    scala = larghezza / (maxx - minx)
+    altezza = int(math.ceil((maxy - miny) * scala))
+
+    def numero(v):
+        # un decimale (un'unita' del viewBox sono ~40 m: il tratto resta liscio anche grande)
+        s = "%.1f" % v
+        return s[:-2] if s.endswith(".0") else s
+
+    foce = proietta(*FOCE_TEVERE)
+    d = []
+    lunghezze = []
+    for anello in anelli:
+        pts = [((x - minx) * scala, (maxy - y) * scala) for x, y in anello]
+        if anello is anelli[0]:
+            # il tratto parte dalla foce del Tevere: il vertice piu' vicino diventa il primo
+            fx, fy = (foce[0] - minx) * scala, (maxy - foce[1]) * scala
+            k = min(range(len(pts)), key=lambda i: (pts[i][0] - fx) ** 2 + (pts[i][1] - fy) ** 2)
+            pts = pts[k:] + pts[:k]
+        # Anello chiuso: si semplifica in due meta' (primo e ultimo punto coincidono, quindi
+        # altrimenti il segmento di riferimento e' nullo); primo punto e meta' restano.
+        pts = pts + [pts[0]]
+        meta = len(pts) // 2
+        pts = semplifica(pts[:meta + 1], 1.6) + semplifica(pts[meta:], 1.6)[1:]
+        if len(pts) < 4:
+            continue
+        d.append("M" + "L".join("%s %s" % (numero(x), numero(y)) for x, y in pts[:-1]) + "Z")
+        lunghezze.append(sum(math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]) for i in range(len(pts) - 1)))
+
+    def lat(y):
+        return math.degrees(2 * math.atan(math.exp(math.radians(y))) - math.pi / 2)
+
+    # Quota dell'anello principale sulla lunghezza totale: il tratteggio dell'intro riparte a ogni
+    # sottopercorso, quindi il disegno scorre su quella lunghezza (vedi --L nel template).
+    anello_quota = lunghezze[0] / sum(lunghezze)
+    return ('<svg id="intro-contorno" viewBox="0 0 %d %d" data-ovest="%.6f" data-est="%.6f" '
+            'data-nord="%.6f" data-sud="%.6f" data-anello="%.4f" aria-hidden="true" focusable="false">'
+            '<path id="intro-tratto" pathLength="1" d="%s"/></svg>'
+            % (larghezza, altezza, minx, maxx, lat(maxy), lat(miny), anello_quota, "".join(d)))
+
+
 def hash_corto(files):
     h = hashlib.sha1()
     for f in sorted(files):
@@ -276,6 +449,7 @@ def config_vercel(produzione=False):
             {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "public, max-age=0, must-revalidate"}]},
             {"source": "/strade/(.*)", "headers": immutabile},
             {"source": "/rete/(.*)", "headers": immutabile},
+            {"source": "/copertura/(.*)", "headers": immutabile},
             {"source": "/servizi/(.*)", "headers": immutabile},
             {"source": "/3d/(.*)", "headers": immutabile},
         ]
@@ -498,10 +672,46 @@ def copia_rete(produzione=False):
     return hash_corto(file_rete)
 
 
+def copia_copertura():
+    # Esagoni abitati coi minuti a piedi per categoria essenziale, riscritti campo per
+    # campo (solo numeri): nient'altro arriva in dist/. Senza il file la build non si
+    # ferma, la 2D apre come prima (versione a None).
+    if COPERTURA_OUT.exists():
+        shutil.rmtree(COPERTURA_OUT)
+    if not COPERTURA_NEL_RILASCIO:
+        print("Copertura dei 15 minuti spenta (COPERTURA_NEL_RILASCIO): la 2D esce senza esagoni.")
+        return None
+    if not COPERTURA_SRC.exists():
+        print("ATTENZIONE: manca " + str(COPERTURA_SRC) + ": la 2D esce senza lo strato dei 15 minuti "
+              "(python3 prepara_copertura_15_minuti.py).")
+        return None
+    try:
+        d = json.loads(COPERTURA_SRC.read_text(encoding="utf-8"))
+        e = d["esagono"]
+        esagono = {k: float(e[k]) for k in ("lato", "lat0", "lon0", "kx", "ky")}
+        categorie = [str(c) for c in d["categorie"]]
+        passo = 3 + len(categorie)
+        celle = [int(x) for x in d["celle"]]
+        if not categorie or len(celle) % passo or any(m < 1 or m > int(d["oltre"]) for i in range(0, len(celle), passo)
+                                                       for m in celle[i + 3:i + passo]):
+            raise ValueError("celle non coerenti con le categorie")
+        out = {"esagono": esagono, "categorie": categorie, "soglia": int(d["soglia"]), "oltre": int(d["oltre"]),
+               "abitanti_min": int(d["abitanti_min"]), "celle": celle}
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise SystemExit("Errore: " + str(COPERTURA_SRC) + " non valido (" + str(exc) + ").")
+    COPERTURA_OUT.mkdir(parents=True)
+    f = COPERTURA_OUT / "copertura.json"
+    f.write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
+    if check_zero_footprint(f) != 0:
+        raise SystemExit("Errore: il gate ha trovato footprint in " + str(f) + ". Build FALLITA.")
+    print("Copertura dei 15 minuti: " + str(len(celle) // passo) + " esagoni, gate OK.")
+    return hash_corto([f])
+
+
 def copia_vista_3d():
     # MapLibre GL 4.7.1 (BSD-3, licenza accanto) e il modulo della vista 3D. Il gate passa
     # su ogni file. Nel MapLibre minificato quattro accessi "p.d" (polylabel) possono
-    # somigliare a una sigla dell'elenco dei termini: si riscrivono p["d"], identico per JavaScript; il conteggio
+    # somigliare a un termine dell'elenco: si riscrivono p["d"], identico per JavaScript; il conteggio
     # esatto fa fallire il build se una nuova versione cambia il codice.
     if VISTA3D_OUT.exists():
         shutil.rmtree(VISTA3D_OUT)
@@ -569,6 +779,7 @@ def main(argv=None):
         "strade": copia_strade(),
         "servizi": copia_servizi(),
         "rete": copia_rete(produzione),
+        "copertura": copia_copertura(),
         "3d": copia_vista_3d(),
     }
     scrivi_vercel_json(produzione)
@@ -576,7 +787,7 @@ def main(argv=None):
 
     for marker in (MARKER_FONTS_CSS, MARKER_LEAFLET_CSS, MARKER_LEAFLET_JS, MARKER_QUARTIERI,
                    MARKER_MUNICIPI, MARKER_URBE_LOGO, MARKER_ICONE_SERVIZI, MARKER_VERSIONI,
-                   MARKER_VISTA3D_CSS, MARKER_VISTA3D_JS):
+                   MARKER_VISTA3D_CSS, MARKER_VISTA3D_JS, MARKER_INTRO_SVG):
         occorrenze = template.count(marker)
         if occorrenze != 1:
             raise SystemExit(
@@ -591,6 +802,7 @@ def main(argv=None):
     output = output.replace(MARKER_QUARTIERI, dump_json_sicuro(compatta_feature_collection(quartieri_geojson)))
     output = output.replace(MARKER_MUNICIPI, dump_json_sicuro(municipi_geojson))
     output = output.replace(MARKER_URBE_LOGO, urbe_logo)
+    output = output.replace(MARKER_INTRO_SVG, costruisci_intro_svg(municipi_geojson))
     output = output.replace(MARKER_ICONE_SERVIZI, dump_json_sicuro(icone_servizi))
     output = output.replace(MARKER_VERSIONI, dump_json_sicuro(versioni))
     output = output.replace(MARKER_VISTA3D_CSS, leggi_input_obbligatorio(VISTA3D_SRC / "aggancio.css"))

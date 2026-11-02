@@ -7,14 +7,23 @@
   #vista-dd button {
     font-family: var(--font); font-size: 12.5px; font-weight: 800; letter-spacing: 0.02em; color: var(--ink-soft);
     background: transparent; border: 0; border-radius: 999px; padding: 6px 13px; min-height: 30px; cursor: pointer;
-    transition: background 0.18s var(--ease), color 0.18s var(--ease);
   }
+  /* Niente dissolvenza sul tasto: mentre la 3D si prepara il disegno si ferma per qualche
+     secondo e la dissolvenza restava a meta' (scritte illeggibili). */
   #vista-dd button:hover { color: var(--amaranto); }
   #vista-dd button[aria-pressed="true"] { background: var(--amaranto); color: #fff; }
   #vista-dd button:focus-visible { outline: 2px solid var(--amaranto); outline-offset: 2px; }
   /* Sopra mappa e pannelli della 2D (1000-1001), sotto "Elenco" (1100), drawer e avvisi. */
   #vista-3d { position: absolute; inset: 0; z-index: 1050; background: #EDE8E1; }
   #vista-3d[hidden] { display: none; }
+  /* Finche' la mappa 3D non ha il primo disegno (data-stato="carico") resta l'avviso: mai la
+     tela beige vuota. Non durante l'intro (data-attesa assente), che ha il suo passaggio. */
+  #vista-3d[data-attesa][data-stato="carico"]::after {
+    content: "Preparo la vista 3D…"; z-index: 5; pointer-events: none;
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    padding: 10px 18px; border-radius: 999px; background: var(--panel); box-shadow: var(--shadow);
+    font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--ink-soft); white-space: nowrap;
+  }
   #vista-3d .v3d-attesa {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     padding: 10px 18px; border-radius: 999px; background: var(--panel); box-shadow: var(--shadow);
@@ -28,6 +37,9 @@
      3D; il cartiglio e la "vista d'insieme" della 3D lasciano il posto ai suoi. */
   @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
     body.vista-3d-on .leaflet-top.leaflet-left { z-index: 1106; }
+    /* la riga dell'attribuzione della 2D, in fondo, vale anche per la 3D: sopra la mappa
+       (1050), sotto scheda e fogli (1060), come in 2D */
+    body.vista-3d-on #attribution { z-index: 1055; }
     #vista-3d .v3d-reset, #vista-3d .v3d-cartiglio { display: none !important; }
   }
   /* Pannello Servizi della 2D sopra la 3D (nell'area), come la scheda: sotto la legenda come

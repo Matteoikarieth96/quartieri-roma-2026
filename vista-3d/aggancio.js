@@ -4,7 +4,8 @@
   // e il modulo (dist/3d/) si scaricano al primo "3D", mai al primo caricamento.
   // La 3D riceve i dati gia' decodificati e la selezione corrente; cio' che si sceglie
   // in 3D resta "pendente" e si applica alla 2D quando si torna in 2D.
-  // Hash: #3d, #3d/<codice area>, #3d/municipio-<n> (convive con #<codice>, #via=, #15=).
+  // Hash: #3d, #3d/<codice area>, #3d/municipio-<n>, #3d/via=<nome> (convive con #<codice>,
+  // #via=, #15=).
   // Cronologia: entrare in 3D col tasto aggiunge UNA voce (pushState); le scelte dentro
   // la 3D la riscrivono (replaceState). "Indietro" e il tasto 2D tornano alla voce di
   // prima, quindi la 3D non crea voci doppie e "Indietro" non esce dal sito.
@@ -40,17 +41,22 @@
       if (!m[1]) return { tipo: "roma" };
       var mm = /^municipio-(\d+)$/.exec(m[1]);
       if (mm) return { tipo: "municipio", arabo: parseInt(mm[1], 10) };
+      var mv = /^via=(.+)$/.exec(m[1]);
+      if (mv) return { tipo: "via", nome: mv[1] };
       return { tipo: "area", codice: m[1] };
     }
+    // con una via aperta, un'area che la via attraversa scrive la via (come la 2D)
     function scriviHash(s, nuovaVoce) {
-      var h = "#3d" + (s.tipo === "area" ? "/" + encodeURIComponent(s.codice) : (s.tipo === "municipio" ? "/municipio-" + s.arabo : ""));
+      var h = "#3d" + (s.tipo === "area" ? "/" + (inVia(s) ? "via=" + encodeURIComponent(viaAttiva.via.nome) : encodeURIComponent(s.codice)) :
+        (s.tipo === "municipio" ? "/municipio-" + s.arabo : ""));
       if (nuovaVoce && history.pushState) history.pushState({ v3d: true }, "", h);
       else if (history.replaceState) history.replaceState(history.state, "", h);
     }
     function pulisciHash() { if (history.replaceState) history.replaceState(null, "", location.pathname + location.search); }
     function hash2D() {
       if (!history.replaceState) return;
-      if (selectedEntry) history.replaceState(null, "", "#" + encodeURIComponent(selectedEntry.feature.properties.codice || ""));
+      if (selectedEntry && inVia({ tipo: "area", codice: selectedEntry.feature.properties.codice })) history.replaceState(null, "", "#via=" + encodeURIComponent(viaAttiva.via.nome));
+      else if (selectedEntry) history.replaceState(null, "", "#" + encodeURIComponent(selectedEntry.feature.properties.codice || ""));
       else pulisciHash();
     }
     function voceNostra() { return !!(history.state && history.state.v3d); }
@@ -119,7 +125,11 @@
     }
 
     function fallisci(msg, definitivo) {
+      if (tourAttivo() && tour3D) chiudiTour();
       chiudi3d(false, true);
+      // la 3D si e' interrotta dopo il via: l'intro non resta appesa ad aspettare la citta'
+      if (ponte && ponte.stato === "partita") compostaIntro();
+      ponteNo();
       hash2D();
       if (definitivo) gruppoEl.hidden = true;
       avviso(msg);
@@ -127,19 +137,32 @@
 
     // daTasto: aperta dal tasto 3D (nuova voce di cronologia); altrimenti da un link o
     // da avanti/indietro, e la voce c'e' gia'.
-    function apri3d(sel, daTasto) {
-      if (aperta) { if (sel && window.Vista3D) vola3d(sel); return; }
+    // silenzioso: l'avvio di default in 3D; senza WebGL vero si resta in 2D senza avviso.
+    // ingresso: l'avvio sotto l'intro (vedi in fondo e opt.ingresso di Vista3D.apri).
+    function apri3d(sel, daTasto, silenzioso, ingresso) {
+      if (aperta) { if (sel && sel.tipo === "via") apriViaDaLink(sel.nome); else if (sel && window.Vista3D) vola3d(sel); return; }
       if (presentazioneOn) return;
+      // #3d/via=<nome>: si apre quando c'e' lo stradario, dritta sull'area della via
+      if (sel && sel.tipo === "via") {
+        var nome = sel.nome;
+        caricaVie().then(function () {
+          var v = viaDiNome(nome), rif = v && areaDiRiferimento(v);
+          if (rif) { caricaViaAttiva(v); apri3d({ tipo: "area", codice: rif.feature.properties.codice }, daTasto); return; }
+          avviso("La via del link non si è trovata.");
+          apri3d({ tipo: "roma" }, daTasto);
+        });
+        return;
+      }
       if (!webglProvato) {
         webglProvato = true;
         if (!webglDisponibile()) {
           gruppoEl.hidden = true;
           if (selDaHash()) hash2D();
-          avviso("La vista 3D non è disponibile su questo dispositivo.");
+          if (!silenzioso) avviso("La vista 3D non è disponibile su questo dispositivo.");
           return;
         }
       }
-      if (tourAttivo()) chiudiTour();
+      if (tourAttivo() && !tour3D) chiudiTour();   // la guida della 3D apre la 3D lei stessa
       chiudiSchedaServizio();
       // 15 minuti accesi: si chiudono e tornano, sullo stesso punto, al ritorno in 2D.
       q15Salvato = null;
@@ -170,6 +193,8 @@
         document.getElementById("map-wrap").appendChild(contenitore);
       }
       contenitore.hidden = false;
+      // l'avviso resta anche dopo, finche' la mappa non ha il primo disegno (aggancio.css)
+      if (silenzioso) contenitore.removeAttribute("data-attesa"); else contenitore.setAttribute("data-attesa", "");
       contenitore.innerHTML = '<div class="v3d-attesa">Preparo la vista 3D…</div>';
       document.body.classList.add("vista-3d-on");
       // la scheda della 2D sta sopra la 3D solo nell'area: subito quella dell'area di arrivo
@@ -200,9 +225,13 @@
           chiudiScheda: chiudiSchedaServizio,
           tipiAttivi: activeTipi,
           selezione: sel,
+          via: viaPer3D(),
+          ingresso: ingresso,
           riduciMovimento: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
           mobile: suMobile(),
-          onSeleziona: function (s) { pendente = s; scriviHash(s); segnaOrigine(s); elencoSegue(s); cornice3d(s); },
+          // telefono: la card della guida in alto (la camera inquadra sotto)
+          alto: spazioGuida3D,
+          onSeleziona: function (s) { viaSegue(s); pendente = s; scriviHash(s); segnaOrigine(s); elencoSegue(s); cornice3d(s); },
           // nell'area la scheda della 2D (mostraInfo) sopra la 3D; fuori dall'area via
           onArea: schedaArea,
           scheda: function () { return infoPanel.classList.contains("visible") ? infoPanel : null; },
@@ -254,7 +283,9 @@
         if (activeMunicipio && activeMunicipio !== String(e.feature.properties.municipio_num_arabo)) {
           activeMunicipio = ""; municipioSelect.value = ""; applicaFiltri(); aggiornaRollup();
         }
-        selezionaEntry(e, false);
+        // con la via aperta in 3D si torna sulla via intera, come la ricerca della 2D
+        if (inVia(s) && viaAttiva.traccia) { selezionaEntry(e, false, true); inquadraVia(viaAttiva.traccia); }
+        else selezionaEntry(e, false);
         return;
       }
       if (selectedLayer) deseleziona();
@@ -276,7 +307,7 @@
       aperta = false; segna(false);
       chiudiSchedaServizio();
       try { if (window.Vista3D) window.Vista3D.chiudi(); } catch (e) {}
-      if (contenitore) { contenitore.hidden = true; contenitore.innerHTML = ""; }
+      if (contenitore) { contenitore.hidden = true; contenitore.innerHTML = ""; contenitore.style.background = ""; }
       document.body.classList.remove("vista-3d-on");
       map.invalidateSize();
       servizi2D();
@@ -289,6 +320,8 @@
         if (s) applicaA2D(s);
         else hash2D();
       }
+      // una via aperta in 3D resta solo se la 2D e' su un'area che la via attraversa
+      if (viaAttiva && !(selectedEntry && inVia({ tipo: "area", codice: selectedEntry.feature.properties.codice }))) pulisciVia();
       // la scheda torna quella della 2D: posizione e stile della 2D, aperta solo se la 2D
       // ha un'area scelta
       infoPanel.style.transform = ""; infoPanel.style.transition = "";
@@ -457,13 +490,16 @@
     }
     // La ricerca scritta a 3D aperta filtra l'elenco come in 2D, ma senza deselezionare
     // l'area della 2D (toglierebbe la scheda sopra la 3D): copia il gestore input di searchEl
-    // nel template (testoRicerca, applicaFiltri, aggiornaVie), da riallineare se cambia.
+    // nel template (testoRicerca, applicaFiltri, aggiornaVie, e su telefono l'elenco sotto la
+    // barra, cercaApri), da riallineare se cambia.
     searchEl.addEventListener("input", function (ev) {
       if (!aperta) return;
       ev.stopImmediatePropagation();
       testoRicerca = foldAccenti(searchEl.value.trim());
+      if (vieStato === "errore" && testoRicerca.length >= 3) caricaVie();
       filtraSenzaDeselezionare();
       aggiornaVie();
+      cercaApri(true);
     }, true);
     function elencoSegue(s) {
       if (s.tipo === "area") {
@@ -479,10 +515,71 @@
     }
 
     function segnaOrigine(s) { if (s.tipo !== "area") origine = s; }
-    function vola3d(s, opz) {
+    function vola3d(s) {
+      viaSegue(s);
       pendente = s; scriviHash(s); segnaOrigine(s); cornice3d(s);
-      if (window.Vista3D) window.Vista3D.seleziona(s, opz);
+      if (window.Vista3D) window.Vista3D.seleziona(s);
     }
+
+    // ---------- Via cercata con la 3D aperta ----------
+    // La via e' quella della 2D (viaAttiva): la scheda sopra la 3D ne mostra il blocco "via"
+    // (aggiornaBloccoVia) e la Leaflet coperta ne ha il tracciato, pronto per il ritorno in 2D.
+    // La 3D vola sull'area di riferimento e dipinge il tracciato sul tetto della tessera
+    // (Vista3D.via). Un'area che la via attraversa la tiene (chip della scheda, tocco sulla
+    // 3D); ogni altra scelta, la x, Esc e "Vista d'insieme" la tolgono, come nella 2D.
+    function inVia(s) { return !!(viaAttiva && s && s.tipo === "area" && viaAttiva.via.aree.indexOf(s.codice) !== -1); }
+    function viaSegue(s) { if (viaAttiva && !inVia(s)) pulisciVia(); }
+    function viaDiNome(nome) { return VIE ? VIE.filter(function (v) { return v.nome === nome; })[0] || null : null; }
+    function viaPer3D() { return viaAttiva && viaAttiva.linee ? { nome: viaAttiva.via.nome, linee: viaAttiva.linee } : null; }
+    // la via diventa quella attiva (tolta dal tetto quella di prima) e il tracciato si carica
+    function caricaViaAttiva(v) {
+      var gen = {};
+      viaAttiva = { via: v, gen: gen };
+      viaLayer.clearLayers();
+      if (aperta && window.Vista3D && window.Vista3D.via) window.Vista3D.via(null);
+      lineeVia(v).then(function (linee) {
+        if (viaAttiva && viaAttiva.gen === gen && linee.length) tracciaVia(linee);
+      }).catch(function () {});
+    }
+    function mostraVia3d(v) {
+      var rif = areaDiRiferimento(v);
+      if (!rif) return;
+      caricaViaAttiva(v);
+      var s = { tipo: "area", codice: rif.feature.properties.codice };
+      vola3d(s); elencoSegue(s);
+      if (suMobile()) chiudiDrawer();
+    }
+    function apriViaDaLink(nome) {
+      caricaVie().then(function () {
+        var v = viaDiNome(nome);
+        if (v && aperta) mostraVia3d(v);
+        else if (!v) avviso("La via del link non si è trovata.");
+      });
+    }
+    // Riassegnate: la ricerca (risultati della barra laterale e della barra del telefono,
+    // Invio nel campo) e i chip del blocco "via" le chiamano per nome.
+    var mostraVia2D = mostraVia;
+    mostraVia = function (v) { if (aperta && !presentazioneOn) mostraVia3d(v); else mostraVia2D(v); };
+    var selezionaEntry2D = selezionaEntry;
+    selezionaEntry = function (entry, daLista) {
+      if (!aperta || presentazioneOn) return selezionaEntry2D.apply(this, arguments);
+      var s = { tipo: "area", codice: entry.feature.properties.codice };
+      vola3d(s); elencoSegue(s);
+      if (daLista && suMobile()) chiudiDrawer();
+    };
+    // il tracciato arrivato (anche da una ricerca della 2D poco prima del tasto 3D) va sul tetto
+    var tracciaVia2D = tracciaVia;
+    tracciaVia = function (linee) {
+      var t = tracciaVia2D(linee);
+      viaAttiva.linee = linee;
+      if (aperta && window.Vista3D && window.Vista3D.via) window.Vista3D.via(viaPer3D());
+      return t;
+    };
+    var pulisciVia2D = pulisciVia;
+    pulisciVia = function () {
+      pulisciVia2D();
+      if (aperta && window.Vista3D && window.Vista3D.via) window.Vista3D.via(null);
+    };
 
     // ---------- Deseleziona della 2D con la 3D aperta ----------
     // Esc della 2D (anche dalla ricerca vuota o dopo "Cos'e'"), i filtri per tipo e ogni
@@ -516,20 +613,19 @@
       mostraInfo(props);
       schedaAlta(false);
     }
-    // deseleziona della 2D tradotto in 3D: si torna al livello da cui si e' entrati
-    // nell'area (al municipio dell'area se si veniva da un municipio, altrimenti a Roma; il
-    // menu, che nell'area segue la 3D, non conta), e l'elenco si riallinea a quel livello.
-    // Tornando a Roma la camera resta dov'e' come nella 2D: prima chiudere
-    // la scheda riportava alla vista di Roma intera.
-    // fermo=false (tasto indietro della barra): a Roma la camera torna su Roma intera.
-    function deseleziona3d(fermo) {
-      var s = window.Vista3D && window.Vista3D.selezione(), dest = { tipo: "roma" };
-      if (origine.tipo === "municipio") {
-        var e = s && s.tipo === "area" ? entryDi(s.codice) : null;
-        dest = { tipo: "municipio", arabo: e ? parseInt(e.feature.properties.municipio_num_arabo, 10) : origine.arabo };
-      }
+    // deseleziona della 2D tradotto in 3D: la x (e ogni altro percorso che lascia l'area)
+    // porta sempre al municipio dell'area, da qualsiasi ingresso; li' "Vista d'insieme" resta
+    // e porta a Roma. L'elenco si riallinea al municipio.
+    // indietro (tasto indietro della barra): si sale al livello da cui si e' entrati
+    // nell'area, Roma intera se si veniva da Roma.
+    function deseleziona3d(indietro) {
+      var s = window.Vista3D && window.Vista3D.selezione();
+      var e = s && s.tipo === "area" ? entryDi(s.codice) : null;
+      var dest = e && !(indietro && origine.tipo === "roma") ?
+        { tipo: "municipio", arabo: parseInt(e.feature.properties.municipio_num_arabo, 10) } : { tipo: "roma" };
+      pulisciVia();
       schedaArea(null);
-      vola3d(dest, dest.tipo === "roma" && fermo !== false ? { fermo: true } : null);
+      vola3d(dest);
       elencoSegue(dest);
     }
     var lasciaArea2D = lasciaArea;
@@ -553,7 +649,7 @@
       if (!aperta) return;
       ev.stopImmediatePropagation(); ev.preventDefault();
       var s = window.Vista3D && window.Vista3D.selezione();
-      if (s && s.tipo === "area") deseleziona3d(false);
+      if (s && s.tipo === "area") deseleziona3d(true);
       else { var dest = { tipo: "roma" }; vola3d(dest); elencoSegue(dest); }
     }, true);
     // "15 min" della scheda: i 15 minuti sono della 2D. Si torna in 2D (come col tasto 2D,
@@ -562,6 +658,15 @@
       if (!aperta) return;
       ev.stopImmediatePropagation(); ev.preventDefault();
       dopoChiusura = function () { setTimeout(avvia15DaScheda, 0); };
+      torna2D();
+    }, true);
+    // Livelli > "A piedi in 15 minuti da un punto" (telefono): stessa strada. Senza, i 15
+    // minuti si accendevano sotto la 3D, col pannello coperto e il cartiglio sparito.
+    document.getElementById("livelli-q15").addEventListener("click", function (ev) {
+      if (!aperta) return;
+      ev.stopImmediatePropagation(); ev.preventDefault();
+      chiudiLivelli();
+      dopoChiusura = function () { setTimeout(function () { if (!q15.attivo) q15Attiva(false); }, 0); };
       torna2D();
     }, true);
     // Il tasto posizione sopra la 3D: l'area trovata si apre in 3D.
@@ -575,8 +680,9 @@
     btn3d.addEventListener("click", function () { apri3d(null, true); });
     btn2d.addEventListener("click", torna2D);
 
-    // In 3D l'elenco e il filtro municipio fanno volare la 3D; la ricerca per via,
-    // la guida e la presentazione riportano in 2D (lassu' non ci sono).
+    // In 3D l'elenco, il filtro municipio e la ricerca (aree e vie, vedi mostraVia e
+    // selezionaEntry sopra) fanno volare la 3D; la guida e la presentazione riportano in 2D
+    // (lassu' non ci sono).
     var sidebar = document.getElementById("sidebar");
     function areaDaLi(target) {
       var li = target && target.closest ? target.closest("#area-list li") : null;
@@ -593,19 +699,13 @@
     }
     sidebar.addEventListener("click", function (ev) {
       if (!aperta) return;
-      if (scegliDaElenco(ev)) return;
-      if (ev.target.closest && ev.target.closest("#street-results")) chiudi3d(false);
+      scegliDaElenco(ev);
     }, true);
+    // Invio nel campo e sui risultati per via li gestisce la 2D (che apre con mostraVia e
+    // selezionaEntry, o col clic sulla voce dell'elenco)
     sidebar.addEventListener("keydown", function (ev) {
       if (!aperta || (ev.key !== "Enter" && ev.key !== " ")) return;
-      if (ev.target === searchEl) {
-        if (ev.key !== "Enter") return;
-        chiudi3d(false);
-        // nessun risultato da aprire (la 2D non riscrive l'hash): via #3d dalla barra
-        if (!(streetEl.querySelector("button") || primaAreaVisibile())) hash2D();
-        return;
-      }
-      if (ev.target.closest && ev.target.closest("#street-results")) { chiudi3d(false); return; }
+      if (ev.target === searchEl || (ev.target.closest && ev.target.closest("#street-results"))) return;
       scegliDaElenco(ev);
     }, true);
     sidebar.addEventListener("change", function (ev) {
@@ -628,13 +728,34 @@
       var s = window.Vista3D.selezione(), e = s && s.tipo === "area" ? entryDi(s.codice) : null;
       if (e && !activeTipi[e.feature.properties.tipo]) deseleziona3d();
     });
-    // La guida parte subito dopo questo click: la 3D si chiude adesso, e la voce di
-    // cronologia aggiunta entrando perde il segno (resta una voce in piu', solo qui).
-    tourBtn.addEventListener("click", function () {
-      if (!aperta) return;
-      chiudi3d(true, true);
-      if (voceNostra() && history.replaceState) history.replaceState(null, "", location.hash);
-    }, true);
+    // La guida alla mappa (template, costruisciStep3D) racconta la 3D e finisce nei 15 minuti
+    // della 2D: muove la 3D da qui, con le stesse strade del tasto, dell'elenco e della x.
+    guida3D = {
+      // si prova WebGL ora: la guida sceglie fra la sua storia in 3D e il tour della 2D
+      disponibile: function () {
+        if (gruppoEl.hidden || presentazioneOn) return false;
+        if (!webglProvato) {
+          webglProvato = true;
+          if (!webglDisponibile()) { gruppoEl.hidden = true; return false; }
+        }
+        return true;
+      },
+      aperta: function () { return aperta; },
+      // dalla 2D apre la 3D gia' li' (una voce di cronologia, come il tasto); in 3D ci vola,
+      // se non c'e' gia'
+      vola: function (s) {
+        if (!aperta) { apri3d(s, true); return; }
+        var cor = window.Vista3D && window.Vista3D.selezione ? window.Vista3D.selezione() : pendente;
+        if (cor && JSON.stringify(cor) === JSON.stringify(s)) return;
+        vola3d(s); elencoSegue(s);
+      },
+      // come "15 min" della scheda: si torna in 2D e poi, a 2D pronta, parte poi()
+      torna2D: function (poi) {
+        if (!aperta) { poi(); return; }
+        dopoChiusura = function () { setTimeout(poi, 0); };
+        torna2D();
+      }
+    };
 
     // Esc torna in 2D, se non c'e' un drawer, un pannello o un popup aperto da chiudere prima.
     document.addEventListener("keydown", function (ev) {
@@ -645,6 +766,8 @@
       ev.stopPropagation(); ev.preventDefault();
       var pop = contenitore && contenitore.querySelector(".v3d-popup:not([hidden])");
       if (pop) { if (window.Vista3D && window.Vista3D.chiudiPopup) window.Vista3D.chiudiPopup(); else pop.hidden = true; return; }
+      // con una via aperta Esc fa come nella 2D: lascia l'area e la via (come la x)
+      if (viaAttiva) { deseleziona3d(); return; }
       torna2D();
     }, true);
 
@@ -652,6 +775,7 @@
     window.addEventListener("hashchange", function () {
       var s = selDaHash();
       if (s && !aperta) apri3d(s, false);
+      else if (s && aperta && s.tipo === "via") apriViaDaLink(s.nome);
       else if (s && aperta && ((s.tipo === "area" && !entryDi(s.codice)) || (s.tipo === "municipio" && !(s.arabo >= 1 && s.arabo <= 15)))) {
         // hash non valido a 3D aperta: l'URL torna a quello della selezione corrente
         var cor = window.Vista3D && window.Vista3D.selezione && window.Vista3D.selezione();
@@ -659,6 +783,83 @@
       }
       else if (!s && aperta) { var ap = ritornoApplica; ritornoApplica = false; chiudi3d(ap, !presentazioneAttivaDaHash()); }
     });
+    var ponte = null;   // il passaggio dall'intro (avviaSottoIntro, sotto)
     var iniziale = selDaHash();
     if (iniziale) apri3d(iniziale, false);
+    // Senza hash si entra in 3D: la 2D e' la mappa dei 15 minuti, ci
+    // si arriva col tasto 2D. Un link della 2D (#<codice>, #via=, #15=, #copertura) apre la
+    // 2D come prima; ?vista=2d pure.
+    else if (!leggiHash() && !/[?&]vista=2d\b/.test(location.search)) {
+      carica().catch(function () {});
+      if (window.MAPPA_INTRO.attiva && window.MAPPA_INTRO.disegno) avviaSottoIntro();
+      else window.MAPPA_INTRO.poi(function () {
+        if (!aperta && !leggiHash() && !presentazioneOn) apri3d({ tipo: "roma" }, false, true);
+      });
+    }
+
+    // Con l'intro la 3D nasce sotto il disegno, piatta, nella stessa inquadratura e con lo
+    // stesso aspetto (fondo crema, il solo contorno di Roma); al via dell'intro Roma si compone
+    // tessera per tessera ("il mosaico", vista-3d.js) e scende alla vista di sempre. Mai la 2D
+    // in mezzo. Lo stato del passaggio e' MAPPA_INTRO.ponte ({ stato, allinea, parti, salta }):
+    // "attesa" (la 3D si prepara), "pronta" (parti() avvia il mosaico), "partita" (l'intro
+    // l'ha avviato), "no" (niente 3D: l'intro si posa sulla 2D come prima). Durante il mosaico
+    // la 3D racconta all'intro le tessere a terra (MAPPA_INTRO.conta) e la citta' composta
+    // (MAPPA_INTRO.composta); a intro finita quelle chiamate non fanno nulla.
+    // Solo dichiarazioni di funzione (e una var senza valore): avviaSottoIntro gira piu' in alto,
+    // e l'intro puo' richiamarla subito (disegnato).
+    var compostaInviata;
+    // inoltro a una funzione dell'intro, solo se l'intro e' ancora in corso e la conosce
+    // (con un template piu' vecchio non c'e': niente, senza errori)
+    function allIntro(nome, argomenti) {
+      var I = window.MAPPA_INTRO;
+      if (!I || !I.attiva || typeof I[nome] !== "function") return;
+      try { I[nome].apply(I, argomenti); } catch (e) { if (window.console) console.error(e); }
+    }
+    function contaIntro(atterrate, totali) { allIntro("conta", [atterrate, totali]); }
+    // composta una volta sola: dal mosaico, o da fallisci se la 3D si interrompe dopo il via
+    function compostaIntro() {
+      if (compostaInviata) return;
+      compostaInviata = true;
+      allIntro("composta", []);
+    }
+    // la 3D non arriva (o si e' interrotta prima del via): l'intro si posa sulla 2D
+    function ponteNo() {
+      if (!ponte || (ponte.stato !== "attesa" && ponte.stato !== "pronta")) return;
+      ponte.stato = "no";
+      if (window.MAPPA_INTRO.ponteCambiato) window.MAPPA_INTRO.ponteCambiato();
+    }
+    function avviaSottoIntro() {
+      var I = window.MAPPA_INTRO;
+      ponte = I.ponte = { stato: "attesa", allinea: null, parti: null, salta: null };
+      I.disegnato(function () {
+        if (aperta || leggiHash() || presentazioneOn) { ponteNo(); return; }
+        apri3d({ tipo: "roma" }, false, true, {
+          disegno: function () { return I.attiva && I.disegno ? I.disegno() : null; },
+          // gli anelli del tratto dell'intro; senza (template vecchio) la 3D non disegna la linea
+          contorno: function () { return typeof I.contorno === "function" ? I.contorno() : null; },
+          breve: !!I.breve,
+          pronta: function (allinea, parti, salta) {
+            if (ponte.stato !== "attesa") return;
+            // intro saltata (MAPPA_INTRO.saltata, anche se sta ancora svanendo): Roma subito e senza
+            // animazione; intro uscita da se' perche' la 3D tardava: il mosaico nella versione breve
+            if (I.saltata) { ponte.stato = "partita"; parti(true); salta(); return; }
+            if (!I.attiva) { ponte.stato = "partita"; parti(true); return; }
+            ponte.allinea = allinea; ponte.parti = parti; ponte.salta = salta; ponte.stato = "pronta";
+            if (I.ponteCambiato) I.ponteCambiato();
+          },
+          conta: contaIntro,
+          composta: compostaIntro
+        });
+        // senza WebGL vero apri3d non apre: si resta in 2D, l'intro si posa li'
+        if (!aperta) { ponteNo(); return; }
+        // Il fondo della 3D resta il crema dell'intro finche' la mappa non disegna (il beige di
+        // #vista-3d tornava sotto l'interfaccia). Se l'intro esce prima che la 3D sia pronta,
+        // "Preparo la vista 3D…" come all'apertura dal tasto (data-attesa, aggancio.css), finche'
+        // la 3D resta a "carico"; poi il mosaico breve.
+        if (contenitore) contenitore.style.background = "var(--bg)";
+        I.poi(function () {
+          if (aperta && contenitore && ponte && ponte.stato === "attesa") contenitore.setAttribute("data-attesa", "");
+        });
+      });
+    }
   })();

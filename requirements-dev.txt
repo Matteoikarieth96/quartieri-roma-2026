@@ -1,4 +1,4 @@
-# Test unitari (test_build.py, test_zero_footprint.py): solo pytest.
+# Test unitari (test_build.py, test_zero_footprint.py, test_accorpamento.py): solo pytest.
 pytest
-# Solo per le suite e2e private e per icone/prepara_icone_app.py: i test unitari non lo usano.
+# Solo per icone/prepara_icone_app.py: i test unitari non lo usano.
 playwright

@@ -12,6 +12,7 @@ La licenza MIT di questo repository (`LICENSE`) copre solo il codice. Dati, libr
 | Farmacie attive (anagrafe al 30/10/2026) | `data/servizi/servizi.json` | Ministero della Salute, dati aperti (`dati.salute.gov.it`), con posizioni dai numeri civici di Roma Capitale | Italian Open Data License 2.0 (IODL 2.0), con indicazione della fonte. Si mostrano solo tipo e indirizzo, non la ragione sociale |
 | Case della Comunità | `data/servizi-15-minuti.json`, `data/servizi/servizi.json` | AGENAS | Dati pubblicati dall'ente. Nessuna licenza dichiarata: si indica la fonte |
 | Pronto soccorso | `data/servizi-15-minuti.json`, `data/servizi/servizi.json` | Regione Lazio, con posizioni da OpenStreetMap (ODbL) | Dati pubblicati dall'ente. Nessuna licenza dichiarata per la parte regionale: si indica la fonte |
+| Abitanti per esagono nella copertura dei 15 minuti | `data/copertura/copertura.json` | GHS-POP R2023A, epoca 2025, Commissione europea, Joint Research Centre (GHSL) | Creative Commons Attribution 4.0 (CC BY 4.0), con indicazione della fonte. I tempi a piedi dello stesso file sono calcolati sulla rete pedonale OpenStreetMap: per quella parte vale l'ODbL come sopra |
 | Mappa di base | caricata dal browser | OpenStreetMap, `tile.openstreetmap.org` | © OpenStreetMap contributors (ODbL), con la policy d'uso delle tile di OpenStreetMap Foundation |
 
 ## Librerie e font
@@ -24,6 +25,6 @@ La licenza MIT di questo repository (`LICENSE`) copre solo il codice. Dati, libr
 
 ## Marchi
 
-Il nome e il logo di Urbe Hub (`brand/urbe-hub-donor.png`) sono esclusi dalla licenza MIT. Si possono usare per citare il progetto, non per altri scopi senza permesso.
+Il nome e il logo di Urbe Hub (`brand/urbe-hub-donor.png`, e dentro l'immagine per i social `brand/og.png`) sono esclusi dalla licenza MIT. Si possono usare per citare il progetto, non per altri scopi senza permesso.
 
 Il progetto non usa il marchio, lo stemma o il logo di Roma Capitale e non è un servizio di Roma Capitale.

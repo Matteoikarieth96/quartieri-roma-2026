@@ -1,10 +1,24 @@
 # Quartieri di Roma 2026
 
-La nuova geografia amministrativa di Roma su una mappa che si apre nel browser: 334 quartieri urbani, 22 rioni, 101 zone funzionali e 15 municipi, come da deliberazione n. 150/2026 dell'Assemblea Capitolina. Si può cercare una via nello stradario, aprire un'area per vedere i servizi al suo interno e calcolare cosa si raggiunge a piedi in circa 15 minuti da un punto. La mappa si vede in 2D (Leaflet) e in 3D inclinata (MapLibre GL).
+La nuova geografia amministrativa di Roma su una mappa che si apre nel browser: 334 quartieri urbani, 22 rioni, 101 zone funzionali e 15 municipi, come da deliberazione n. 150/2026 dell'Assemblea Capitolina. Si può cercare una via nello stradario, aprire un'area per vedere i servizi al suo interno e calcolare cosa si raggiunge a piedi in circa 15 minuti da un punto. La mappa si apre in 3D inclinata (MapLibre GL) e col tasto 3D | 2D passa alla 2D (Leaflet).
 
 È un progetto di Urbe Hub con i dati aperti di Roma Capitale. Progetto indipendente: non è un servizio di Roma Capitale. Per i confini ufficiali vale la deliberazione n. 150/2026.
 
 La mappa è online su [romaquartieri.it](https://romaquartieri.it/).
+
+## Novità
+
+Con la versione del 2 novembre 2026:
+
+- la mappa si apre in 3D: le 457 aree cadono come tessere dal centro verso fuori e una guida in cinque passi mostra municipio, quartiere, servizi, via e 15 minuti
+- in 3D, da Roma, il primo clic sceglie un municipio e il secondo l'area; anche la ricerca delle vie funziona in 3D
+- la 2D, col tasto 3D | 2D, è la mappa dei 15 minuti
+- i servizi partono tutti accesi, anche su telefono; in 3D le icone vicine formano grappoli che si aprono sul posto
+- in 3D abbiamo corretto il cambio d'area e lo sfarfallio delle pareti
+- 81 servizi doppi in meno, controllati da `test_accorpamento.py`
+- la copertura dei 15 minuti a esagoni è pronta ma spenta (vedi "La città dei 15 minuti")
+
+Con la versione del 31 ottobre 2026 sono arrivate le farmacie dall'anagrafe del Ministero della Salute, la ricerca delle vie anche col civico, le avvertenze nelle schede di farmacie e pronto soccorso e le correzioni allo stradario. Sono partite dalla [PR #1](https://github.com/urbe-hub/quartieri-roma-2026/pull/1) di Matteo ([@Matteoikarieth96](https://github.com/Matteoikarieth96)): grazie Matteo!
 
 ## Segnalare errori
 
@@ -38,6 +52,11 @@ Opzioni:
 
 Senza opzioni il build produce una versione di anteprima con noindex, adatta a essere provata prima di pubblicare.
 
+Prima di pubblicare in produzione: `dist/` resta quello dell'ultimo build, che di solito è l'anteprima (con noindex). Si rifà sempre con `python3 build.py --produzione` subito prima del deploy e si controlla:
+
+- `grep -ci noindex dist/index.html dist/vercel.json` deve dare 0 per entrambi;
+- dopo il deploy, `curl -sI <indirizzo del sito> | grep -i robots` non deve stampare nulla.
+
 ### Anteprima in locale
 
 Va servita via HTTP, non aprendo il file:
@@ -61,6 +80,17 @@ python3 prepara_rete_pedonale.py centro-latest.osm.pbf
 
 L'estratto dell'Italia centrale si scarica da `https://download.geofabrik.de/europe/italy/centro-latest.osm.pbf`. Lo script scrive `data/rete/` (circa 1.175 riquadri). Senza quella cartella il build di anteprima non si ferma: avvisa e la mappa esce senza il pulsante dei 15 minuti, mentre un link `#15=` apre la mappa normale con un avviso.
 
+Lo strato della copertura qui sotto è spento nel rilascio del 2026-11-02: `COPERTURA_NEL_RILASCIO = False` in `build.py`, e la 2D esce come senza il file (niente esagoni, legenda né fonte GHS-POP). Il codice resta; con `True` torna tutto.
+
+La 2D si apre su Roma con le zone dove i servizi essenziali non si raggiungono a piedi in 15 minuti: esagoni di 250 m dove abitano almeno 50 persone, colorati se manca anche uno fra nido, scuola dell'infanzia, primaria, media, farmacia e parco. Case della Comunità e pronto soccorso non colorano la mappa (sono lontani per circa tre residenti su quattro) e compaiono nella scheda della zona, che si apre toccando un esagono colorato e da cui partono i 15 minuti dal punto. Lo strato si spegne con un'area aperta, coi 15 minuti accesi e in 3D; il link `#copertura` lo riapre. Il dato (`data/copertura/copertura.json`, circa 170 KB) si rifà con:
+
+```bash
+pip install numpy scipy tifffile imagecodecs
+python3 prepara_copertura_15_minuti.py GHS_POP_E2025_GLOBE_R2023A_4326_3ss_V1_0_R5_C20.tif
+```
+
+Lo script usa la rete pedonale di `data/rete/`, i servizi di `data/servizi/servizi.json` e la griglia di popolazione GHS-POP 2025 della Commissione europea (tessera R5_C20, dal sito del GHSL, licenza CC BY 4.0).
+
 ## Test
 
 ```bash
@@ -68,7 +98,7 @@ pip install -r requirements-dev.txt
 python3 -m pytest -q
 ```
 
-I test unitari verificano il build: il meta noindex e l'header X-Robots-Tag in anteprima e in produzione, gli header di sicurezza, il fallimento del build di produzione senza `data/rete/` e la presenza dei file di licenza. Il controllo sul bundle `check_zero_footprint.py` (termini vietati, eccezioni per gli omonimi, file di termini locale facoltativo) lo esegue il build sul file finale.
+I test unitari verificano il build: il meta noindex e l'header X-Robots-Tag in anteprima e in produzione, gli header di sicurezza, il fallimento del build di produzione senza `data/rete/`, la presenza dei file di licenza e l'accorpamento dei servizi doppi (`test_accorpamento.py`, sui casi trovati e sul `data/servizi/servizi.json` scritto). Il controllo sul bundle `check_zero_footprint.py` (termini vietati, eccezioni per gli omonimi, file di termini locale facoltativo) lo esegue il build sul file finale.
 
 ## Pubblicare
 
@@ -90,7 +120,7 @@ Nella fonte GeoRoma sette nomi di quartiere usano l'apostrofo al posto dell'acce
 
 ## Fonti e licenze
 
-Il codice è sotto licenza MIT (vedi `LICENSE`). I dati, le librerie e i font hanno ciascuno la propria licenza, elencata in `THIRD_PARTY.md`: GeoRoma di Roma Capitale, OpenStreetMap (ODbL), Ministero dell'Istruzione e del Merito (IODL 2.0), AGENAS, Regione Lazio, Leaflet, MapLibre GL e il font Montserrat. Il nome e il logo di Urbe Hub non sono coperti dalla licenza MIT.
+Il codice è sotto licenza MIT (vedi `LICENSE`). I dati, le librerie e i font hanno ciascuno la propria licenza, elencata in `THIRD_PARTY.md`: GeoRoma di Roma Capitale, OpenStreetMap (ODbL), Ministero dell'Istruzione e del Merito (IODL 2.0), Ministero della Salute (IODL 2.0), AGENAS, Regione Lazio, GHS-POP della Commissione europea (CC BY 4.0), Leaflet, MapLibre GL e il font Montserrat. Il nome e il logo di Urbe Hub, anche nell'immagine per i social, non sono coperti dalla licenza MIT.
 
 ## Mappa di base
 
@@ -104,7 +134,7 @@ Sotto i 720 px di larghezza la mappa cambia cornice, e il desktop resta com'è:
 - sulla mappa restano la barra con indietro, ricerca (aree e vie) e 2D | 3D, e il tasto posizione
 - in basso il cartiglio con Elenco e Livelli
 - la scheda d'area è un foglio basso (Servizi, 15 minuti, Condividi) che si tira su per i dettagli
-- Servizi e Livelli sono fogli a parte: il foglio Servizi prende il posto della scheda, con le categorie spente di partenza, mentre il foglio Livelli porta legenda e filtri per tipo
+- Servizi e Livelli sono fogli a parte: il foglio Servizi prende il posto della scheda, con tutte le categorie accese di partenza (si spengono quelle che non servono), mentre il foglio Livelli porta legenda e filtri per tipo
 - ogni foglio ha una maniglia: un tocco lo alza o lo abbassa, trascinarlo in giù lo abbassa di un gradino
 
 La stessa cornice vale in 3D.
@@ -120,17 +150,20 @@ build.py                         builder: inlina dati, Leaflet, font e logo, ese
 mappa-quartieri.template.html    template unico (veste e logica della mappa)
 vista-3d/                        modulo della vista 3D e aggancio alla 2D
 vendor/                          Leaflet, MapLibre GL, font Montserrat, con le rispettive licenze
-brand/                           logo Urbe Hub (escluso dalla licenza MIT)
+brand/                           logo Urbe Hub e immagine per i social (esclusi dalla licenza MIT)
 icone/                           icone dei servizi (SVG) e lo script che le prepara
 data/                            dati pronti per il build
 check_zero_footprint.py          controllo sul bundle, eseguito dal build
 test_build.py                    test del build
 test_zero_footprint.py           test del controllo
+test_accorpamento.py             test dei servizi doppi
 importa_dati.py                  confini e stradario, da WFS di Roma Capitale
 importa_servizi.py               Piano dei Servizi, unito a scuole e presidi
 prepara_scuole.py                scuole e nidi (con --dettagli per le schede)
+prepara_farmacie.py              farmacie dall'anagrafe del Ministero della Salute
 prepara_servizi_15_minuti.py     case della comunità e pronto soccorso
 prepara_rete_pedonale.py         rete pedonale da OpenStreetMap
+prepara_copertura_15_minuti.py   copertura dei 15 minuti a esagoni (spenta in questo rilascio)
 ```
 
 ## Contatti

@@ -2,8 +2,6 @@
 dist/
 # Rete pedonale da OSM (~19 MB): si rifa' con prepara_rete_pedonale.py
 data/rete/
-# Screenshot dei test Playwright (si guardano a mano)
-upgrade-2026-10/screenshot/
 # Estratti OSM e indirizzi grezzi: input dei prepara_*.py, non si versionano
 *.pbf
 civici_*.csv

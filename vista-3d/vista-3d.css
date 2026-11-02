@@ -14,6 +14,8 @@
   padding: 8px 16px; font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
   box-shadow: 0 4px 16px rgba(28, 32, 36, 0.16);
 }
+/* desktop: a destra dello zoom (in alto a sinistra), come "Vista d'insieme" nella 2D */
+.v3d-con-zoom .v3d-reset { left: 52px; }
 .v3d-reset[hidden] { display: none; }
 .v3d-reset:hover { background: var(--amaranto-scuro, #720017); }
 
@@ -43,6 +45,19 @@
 
 /* Servizi: l'involucro posizionato da MapLibre, dentro i marcatori della 2D */
 .v3d-servizio { line-height: 0; }
+/* Puntino sul luogo vero di un'icona che la spinta ha spostato */
+.v3d-vero { width: 7px; height: 7px; border-radius: 50%; background: var(--amaranto, #8E001C); border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(28, 32, 36, 0.25); pointer-events: none; }
+/* Ventaglio del grappolo: disco chiaro e fili sotto le icone, sopra tutto il resto; gli
+   altri servizi (e il grappolo aperto) in trasparenza */
+.maplibregl-marker.v3d-fili { z-index: 4; pointer-events: none; }
+.v3d-fili circle { fill: rgba(255, 255, 255, 0.85); stroke: var(--amaranto, #8E001C); stroke-opacity: 0.3; }
+.v3d-fili line { stroke: var(--amaranto, #8E001C); stroke-width: 1.5; stroke-opacity: 0.55; }
+.maplibregl-marker.v3d-ventaglio { z-index: 5; }
+/* filter e non opacity: l'opacita' dei marcatori la scrive MapLibre in linea, quella del
+   grappolo l'animazione del balzo */
+.v3d-servizio, .v3d-vero { transition: filter 0.2s ease; }
+.v3d-ventaglio-su .v3d-servizio:not(.v3d-ventaglio), .v3d-ventaglio-su .v3d-vero { filter: opacity(0.25); }
+@media (prefers-reduced-motion: reduce) { .v3d-servizio, .v3d-vero { transition: none; } }
 
 /* Etichette delle aree: la pillola .area-label della 2D; nel municipio portano il numero
    dei servizi accesi (stesso disco amaranto dei grappoli) e portano dentro l'area. */
@@ -55,6 +70,12 @@
   font-size: 10.5px; font-weight: 800; margin-right: -6px; box-shadow: 0 1px 3px rgba(28, 32, 36, 0.18);
 }
 .v3d-conta[hidden] { display: none; }
+/* Targhette dei municipi (Roma): la stessa pillola col numero romano; sotto il mouse prende
+   il colore del municipio (--mun), come le sue aree che si schiariscono. */
+.v3d-targa > span { gap: 5px; font-size: 12.5px; transition: background-color 0.15s ease, border-color 0.15s ease; }
+.v3d-targa-nome { font-style: normal; font-weight: 600; }
+.v3d-targa.v3d-su > span { background: var(--mun); border-color: var(--mun); color: #1C2024; }
+@media (max-width: 720px) { .v3d-targa > span { font-size: 11px; padding: 1px 6px; } }
 @media (prefers-reduced-motion: reduce) { .v3d-etichetta, .v3d-in-moto .v3d-etichetta { transition: none; } }
 
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
@@ -62,8 +83,9 @@
   .v3d-cartiglio { left: 12px; bottom: 12px; max-width: calc(100% - 24px); padding: 9px 14px 10px; }
   .v3d-nome, .v3d-nome.v3d-nome-medio { font-size: 21px; margin-bottom: 2px; }
   .v3d-meta { font-size: 12.5px; }
-  /* sotto la pillola 2D/3D, che su telefono sta in alto a destra sulla mappa */
-  #vista-3d .maplibregl-ctrl-top-right .maplibregl-ctrl-attrib { margin: 62px 12px 0 0; border-radius: 6px; max-width: calc(100vw - 140px); }
+  /* su telefono vale la riga della 2D in fondo, alzata sopra la 3D (aggancio.css): in alto
+     andava su due o tre righe e copriva etichette e icone */
+  #vista-3d .maplibregl-ctrl-top-right .maplibregl-ctrl-attrib { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .v3d-cartiglio { transition: none; }

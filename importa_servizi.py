@@ -58,6 +58,7 @@ CSV, a pagine da 200mila: outputFormat=csv&count=200000&startIndex=0|200000|4000
 """
 
 import csv
+import difflib
 import json
 import math
 import re
@@ -132,7 +133,7 @@ CATEGORIE_PRESIDIO = ("casa_comunita", "pronto_soccorso", "pronto_soccorso_speci
 SOGLIA_CIVICO_METRI = 30.0
 FARMACIA_COMUNALE = re.compile(r"\bCOM(UNALE|\.\s*LE)\b|FARMACAP", re.I)
 
-# Strato -> categoria (le 10 proposte dalla ricerca upgrade-2026-10/ricerca/2026-10-28-fonti-poi.md).
+# Strato -> categoria.
 # Gli strati non elencati qui non entrano nell'output (elenco nel README).
 CATEGORIE = {
     "Farmacie": "farmacie",
@@ -213,9 +214,32 @@ def distanza_metri(lat1, lon1, lat2, lon2):
 #   - solo scuole: stesso indirizzo entro SOGLIA_STESSO_INDIRIZZO_METRI, anche con
 #     nomi diversi (i codici ministeriali di un istituto sono uno per indirizzo di
 #     studio: "Liceo Classico ..." e "Liceo Scientifico ..." nello stesso edificio).
+# Secondo giro (2026-10-31, caso Villa Fiorelli: "Parco di Villa Fiorelli" e "Villa
+# Fiorelli" a 39 m), sempre nella stessa categoria:
+#   - stesso nome base (nome_base: senza note tra parentesi, ripetizioni della fonte,
+#     articoli e, per i parchi, senza "Parco/Giardino/Area verde" in testa) entro
+#     SOGLIA_STESSO_NOME_METRI, o SOGLIA_PARCO_METRI per i parchi (piu' ingressi);
+#   - nome base uguale a meno dei numeri ("Poliambulatorio Boccea 265" e "625")
+#     entro SOGLIA_NUMERI_METRI;
+#   - fuori dalle scuole, un nome base contenuto nell'altro entro SOGLIA_CONTENUTO_METRI
+#     ("Apulia" e "Poliambulatorio via Apulia", "Teatro Argentina" e il suo museo);
+#   - scuole con lo stesso indirizzo col civico entro SOGLIA_STESSO_CIVICO_METRI: lo
+#     stesso civico geocodificato da due fonti finisce anche a 140 m;
+#   - farmacie entro SOGLIA_FARMACIE_METRI, o allo stesso indirizzo: per legge due
+#     farmacie stanno ad almeno 200 m, piu' vicine e' la stessa registrata due volte.
 # Il conteggio segue: uno per posto.
 SOGLIA_STESSO_NOME_METRI = 150.0
 SOGLIA_STESSO_INDIRIZZO_METRI = 30.0
+SOGLIA_PARCO_METRI = 300.0
+SOGLIA_NUMERI_METRI = 50.0
+SOGLIA_CONTENUTO_METRI = 60.0
+SOGLIA_STESSO_CIVICO_METRI = 150.0
+SOGLIA_FARMACIE_METRI = 60.0
+ARTICOLI = {"di", "d", "del", "dello", "della", "dell", "dei", "degli", "delle", "da",
+            "e", "ed", "il", "lo", "la", "l", "i", "gli", "le", "al", "alla"}
+TIPO_PARCO = {"parco", "parchi", "giardino", "giardini", "area", "aree", "verde", "verdi",
+              "attrezzato", "pubblico", "giochi"}
+NOMI_GENERICI = {"playground"}  # tanti punti diversi con lo stesso nome: mai accorpati per nome
 CATEGORIE_SCUOLA = {"nido", "infanzia", "primaria", "media", "superiore"}
 SIGLE_IGNORATE = {"i", "c", "ic", "iis", "is", "sms", "succ", "succursale"}
 # Parole che da sole non fanno un nome: il nome comune di un gruppo deve averne altre.
@@ -238,6 +262,76 @@ def _poco_informativo(nome):
     parole = _parole(nome)
     return not parole or parole[0] in ("via", "viale", "piazza", "largo") or all(
         p in PAROLE_GENERICHE for p in parole)
+
+
+def nome_pulito(nome):
+    """Il nome ripetuto dalla fonte con la virgola ("Villa Borghese,Villa Borghese") una volta sola."""
+    parti = [p.strip() for p in nome.split(",")]
+    if len(parti) > 1 and len({" ".join(_parole(p)) for p in parti}) == 1:
+        return parti[0]
+    return nome
+
+
+def nome_base(nome, categoria):
+    """Le parole che identificano il posto: senza parentesi, sigle e articoli; per i
+    parchi anche senza il tipo in testa ("Parco di Villa Fiorelli" -> villa fiorelli)."""
+    parole = [p for p in _parole(re.sub(r"\([^)]*\)", "", nome_pulito(nome)), SIGLE_IGNORATE)
+              if p not in ARTICOLI]
+    if categoria == "parchi_e_aree_gioco":
+        while parole and parole[0] in TIPO_PARCO:
+            parole = parole[1:]
+    return parole
+
+
+def _senza_numeri(parole):
+    return [p for p in parole if not re.fullmatch(r"\d+[a-z]?", p)]
+
+
+def stesso_posto(categoria, a, b, d):
+    """Le regole del secondo giro (vedi sopra) per due punti a distanza d."""
+    ind_a = a[6][0] if a[6] else ""
+    ind_b = b[6][0] if b[6] else ""
+    if categoria == "farmacie":
+        return d <= SOGLIA_FARMACIE_METRI or bool(ind_a and ind_a == ind_b)
+    if categoria in CATEGORIE_SCUOLA and ind_a and ind_a == ind_b and re.search(r"\d", ind_a) \
+            and d <= SOGLIA_STESSO_CIVICO_METRI:
+        return True
+    ba, bb = nome_base(a[1], categoria), nome_base(b[1], categoria)
+    if not ba or not bb or " ".join(ba) in NOMI_GENERICI or " ".join(bb) in NOMI_GENERICI:
+        return False
+    soglia = SOGLIA_PARCO_METRI if categoria == "parchi_e_aree_gioco" else SOGLIA_STESSO_NOME_METRI
+    if ba == bb and d <= soglia:
+        return True
+    if _senza_numeri(ba) and _senza_numeri(ba) == _senza_numeri(bb) and d <= SOGLIA_NUMERI_METRI:
+        return True
+    if categoria not in CATEGORIE_SCUOLA and d <= SOGLIA_CONTENUTO_METRI:
+        sa, sb = set(ba), set(bb)
+        corto = sa if len(sa) <= len(sb) else sb
+        return (sa <= sb or sb <= sa) and len("".join(corto)) >= 5
+    return False
+
+
+def nome_accorpato(categoria, nomi):
+    """Il nome di un gruppo. Stesso nome base: il nome intero piu' corto ("Parco Falcone
+    Borsellino", non la parte comune "Parco Falcone"), anche se differiscono per un refuso
+    ("Maisonette" e "Maisonnette"). Fuori dalle scuole, un nome corto che contiene tutti
+    gli altri ("Poliambulatorio via Apulia") o contenuto in tutti ("Casa Di Cura Salus
+    Infirmorum"). Altrimenti nome_del_gruppo()."""
+    basi = [nome_base(n, categoria) for n in nomi]
+    ordinati = sorted(set(nomi), key=lambda n: (_poco_informativo(n), len(n), n))
+    if any(b != basi[0] for b in basi) and all(_senza_numeri(b) == _senza_numeri(basi[0]) for b in basi):
+        return nome_del_gruppo(nomi)  # "Poliambulatorio Boccea 265" e "625": senza il numero
+    if all(b == basi[0] for b in basi) or all(
+            difflib.SequenceMatcher(None, ordinati[0].lower(), n.lower()).ratio() >= 0.9 for n in ordinati):
+        return ordinati[0]
+    if categoria not in CATEGORIE_SCUOLA:
+        for n in ordinati:
+            if len(n) <= 40 and all(set(b) <= set(nome_base(n, categoria)) for b in basi):
+                return n
+        for n in ordinati:
+            if not _poco_informativo(n) and all(set(nome_base(n, categoria)) <= set(b) for b in basi):
+                return n
+    return nome_del_gruppo(nomi)
 
 
 def nome_del_gruppo(nomi):
@@ -303,6 +397,7 @@ def accorpa_doppioni(punti):
     lista accorpata: per ogni gruppo il punto col nome piu' corto tiene posizione e area,
     indirizzi e dettagli diversi si uniscono con " · ", "prevista" resta solo se lo
     sono tutti, l'oggetto dei dettagli si unisce con unisci_dettagli()."""
+    punti = [(p[0], nome_pulito(p[1])) + tuple(p[2:]) for p in punti]
     genitore = list(range(len(punti)))
 
     def radice(i):
@@ -322,13 +417,13 @@ def accorpa_doppioni(punti):
         for a in range(len(indici)):
             for b in range(a + 1, len(indici)):
                 pa, pb = punti[indici[a]], punti[indici[b]]
-                if abs(pa[4] - pb[4]) > 0.002:  # ~220 m in latitudine: fuori soglia di sicuro
+                if abs(pa[4] - pb[4]) > 0.003:  # ~330 m in latitudine: fuori soglia di sicuro
                     continue
                 d = distanza_metri(pa[4], pa[5], pb[4], pb[5])
                 stesso_nome = chiavi[a][0] == chiavi[b][0] and d <= SOGLIA_STESSO_NOME_METRI
                 stesso_indirizzo = (categoria in CATEGORIE_SCUOLA and chiavi[a][1]
                                     and chiavi[a][1] == chiavi[b][1] and d <= SOGLIA_STESSO_INDIRIZZO_METRI)
-                if stesso_nome or stesso_indirizzo:
+                if stesso_nome or stesso_indirizzo or stesso_posto(categoria, pa, pb, d):
                     genitore[radice(indici[a])] = radice(indici[b])
 
     gruppi = {}
@@ -340,6 +435,10 @@ def accorpa_doppioni(punti):
             out.append(gruppo[0])
             continue
         gruppo.sort(key=lambda p: (len(p[1]), p[1], p[4], p[5]))
+        primo_farmacia = gruppo[0][0] == "farmacie"
+        if primo_farmacia:
+            # una farmacia sola: la comunale, se c'e', da' nome e indirizzo (meglio se ce l'ha)
+            gruppo.sort(key=lambda p: (not FARMACIA_COMUNALE.search(p[1]), not p[6]))
         primo = gruppo[0]
 
         def distinti(k):
@@ -350,12 +449,13 @@ def accorpa_doppioni(punti):
                     visti.append(v)
             return " · ".join(visti)
 
-        extra = [distinti(0), distinti(1),
+        extra = [primo[6][0] if primo_farmacia and primo[6] else distinti(0), distinti(1),
                  "prevista" if all(len(p[6]) > 2 and p[6][2] == "prevista" for p in gruppo) else "",
                  unisci_dettagli([p[6][3] if len(p[6]) > 3 else {} for p in gruppo])]
         while extra and not extra[-1]:
             extra.pop()
-        out.append((primo[0], nome_del_gruppo([p[1] for p in gruppo]), primo[2], primo[3],
+        nome = primo[1] if primo_farmacia else nome_accorpato(primo[0], [p[1] for p in gruppo])
+        out.append((primo[0], nome, primo[2], primo[3],
                     primo[4], primo[5], tuple(extra)))
     return out
 

@@ -15,12 +15,48 @@
 <meta property="og:image" content="https://romaquartieri.it/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Quartieri di Roma 2026: la nuova geografia amministrativa della città. Un progetto di Urbe Hub.">
+<link rel="canonical" href="https://romaquartieri.it/">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%238E001C'/%3E%3Cpath d='M32 10 52 22v20L32 54 12 42V22z' fill='none' stroke='%23C9A24A' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M12 22 32 34 52 22M32 34v20' fill='none' stroke='%23C9A24A' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
 <title>Quartieri di Roma 2026</title>
 <script>
   // Modello di tile condiviso da 2D e 3D (un solo punto da cambiare per un altro fornitore).
   window.MAPPA_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  // Tinte dei 15 municipi: le legge la mappa (PALETTE).
+  window.MAPPA_PALETTE = ["#D7885E", "#C99248", "#B29E44", "#93A955", "#6EB173", "#45B594", "#24B4B4", "#34AECE", "#5CA6DF", "#819BE5", "#A191DE", "#BB88CC", "#CE81B2", "#DA7F93", "#7E9AA6"];
+  // Intro animata, "il mosaico" (contorno di Roma, poi la 3D che si compone): si decide qui,
+  // prima del primo disegno, mettendo delle classi su <html>. Mai con uno stato nell'URL
+  // (area, #via=, #15=, #3d, #presentazione: chi arriva da un link va dritto al punto), mai
+  // con la riduzione del movimento; ?intro=no la spegne. Seconda visita (flag
+  // localStorage["rq-intro"], scritto a fine intro o al salto; senza storage o con
+  // un'eccezione si fa l'intro intera): versione breve, circa un secondo.
+  (function () {
+    var ridotto = false;
+    try { ridotto = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+    var attiva = !location.hash.replace(/^#/, "") && !ridotto && !/[?&]intro=no\b/.test(location.search);
+    var breve = false;
+    try { breve = attiva && localStorage.getItem("rq-intro") === "1"; } catch (e) {}
+    var attese = [];
+    window.MAPPA_INTRO = {
+      attiva: attiva,
+      breve: breve,
+      // saltata: l'intro e' stata saltata (in qualunque fase): la 3D, se la trova, finisce subito su Roma.
+      saltata: false,
+      // poi(cb): cb alla fine dell'intro (subito se non c'e' o e' gia' finita).
+      poi: function (cb) { if (window.MAPPA_INTRO.attiva) attese.push(cb); else cb(); },
+      // disegnato(cb): quando aprire la 3D. La 3D nasce sotto l'intro subito, non a tratto
+      // finito: cb parte appena registrata.
+      disegnato: function (cb) { try { cb(); } catch (e) {} },
+      // Passaggio alla 3D (vista-3d/aggancio.js, avviaSottoIntro): { stato, allinea, parti, salta }.
+      ponte: null,
+      _fine: function () { window.MAPPA_INTRO.attiva = false; attese.splice(0).forEach(function (cb) { try { cb(); } catch (e) {} }); }
+    };
+    // intro-on: l'overlay c'e'; intro-nasc: l'interfaccia e' trasparente (solo opacita', mai
+    // display ne' spostamenti: la 3D calcola la camera dalle misure della pagina); intro-hh:
+    // l'h1 della testata aspetta il titolo che gli vola incontro.
+    if (attiva) document.documentElement.className += " intro-on intro-nasc" + " intro-hh" + (breve ? " intro-breve" : "");
+  })();
 </script>
 <style>
 /*<<FONTS_CSS>>*/
@@ -168,6 +204,7 @@
   #street-results button:hover, #street-results button:focus-visible { background: var(--amaranto-wash); outline: none; }
   #street-results .sr-nome { display: block; font-size: 13px; font-weight: 700; }
   #street-results .sr-aree { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
+  #street-results .sr-blocco-aree + .sr-head { border-top: 1px solid var(--line); }
   .filter-group { margin-top: 14px; }
   .tipo-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
   .tipo-btn {
@@ -355,6 +392,8 @@
   #info-servizi .is-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--amaranto); }
   #info-servizi .is-line { margin-top: 5px; font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
   #info-servizi .is-line b { color: var(--amaranto); font-weight: 800; }
+  /* numero e nome restano insieme: si va a capo solo fra una voce e l'altra */
+  #info-servizi .is-voce { white-space: nowrap; }
 
   /* Marker dei servizi: tessere da app con
      l'illustrazione centrata, ancorate alla base: la
@@ -516,7 +555,7 @@
     font-size: 24px; color: var(--faint); cursor: pointer; line-height: 1; }
   #about-panel .ab-close:hover { color: var(--amaranto); }
   #about-panel .ab-kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--amaranto); }
-  #about-panel h2 { margin: 9px 0 16px; font-size: 25px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1.1; }
+  #about-panel h2 { margin: 9px 0 16px; font-size: 25px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1.1; text-wrap: balance; }
   #about-panel p { text-wrap: pretty; margin: 0 0 15px; font-size: 14px; line-height: 1.6; color: var(--ink-soft); max-width: 62ch; }
   #about-panel .ab-levels { display: flex; flex-direction: column; gap: 12px; margin: 18px 0; }
   #about-panel .ab-lv { display: flex; gap: 13px; align-items: flex-start; padding: 13px 15px; background: var(--bg-sink); border-radius: var(--radius); }
@@ -754,7 +793,8 @@
     #info-panel #info-azioni #info-q15-btn svg { width: 14px; height: 14px; }
     #info-panel #info-azioni #info-q15-btn[hidden] { display: none; }
     #info-panel { bottom: 30px; max-height: calc(100% - 44px); width: 250px; }
-    #servizi-panel { max-width: 156px; }
+    /* largo quanto basta per "Scuole dell'infanzia" e "Vita di quartiere" su una riga */
+    #servizi-panel { max-width: 188px; }
   }
 
   /* Telefoni piu' stretti (iPhone SE, Android compatti): logo + titolo entrano comunque */
@@ -870,6 +910,19 @@
     /* Espansa, la legenda e' alta il triplo: durante il tour la si alza al bordo della
        mappa, cosi' resta spazio sotto per la card. Collassata resta dov'e' sempre. */
     body.tour-on #legend:not(.collapsed) { top: 12px; }
+  }
+
+  /* Guida della 3D: la card sta ferma (colonna di sinistra su desktop, in alto su telefono)
+     e la mappa resta tutta libera; le posizioni le calcola posizioneDock. */
+  #tour-card.dock { transition: opacity 0.26s var(--ease), top 0.36s var(--ease); }
+  #tour-card.dock h3, #tour-card.dock p { text-wrap: pretty; }
+  #tour-card.dock .tc-foot button { white-space: nowrap; }
+  #tour-card.dock .tc-nav { margin-left: auto; }
+  @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+    /* Bassa: sotto c'e' la 3D, che inquadra a partire da sotto la barra della ricerca. */
+    #tour-card.dock { padding: 11px 16px 7px; }
+    #tour-card.dock h3 { margin: 6px 0 4px; }
+    #tour-card.dock .tc-prog { margin: 9px 0 5px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -988,6 +1041,49 @@
     #q15-close { top: 6px; right: 6px; min-width: 44px; min-height: 44px; font-size: 22px; }
   }
 
+  /* ---------- Prima vista: dove i servizi essenziali non sono a 15 minuti a piedi ----------
+     Esagoni abitati da data/copertura/ (prepara_copertura_15_minuti.py) sotto il velo
+     del municipio; legenda in basso a sinistra, che su telefono passa nel foglio Livelli. */
+  body.cop-on .leaflet-overlay-pane path.leaflet-interactive { fill-opacity: 0.06; stroke-opacity: 0.35; }
+  #copertura {
+    position: absolute; left: 12px; bottom: 32px; z-index: 1000; width: 268px; max-width: calc(100% - 24px);
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 12px 14px 10px;
+  }
+  #copertura[hidden] { display: none; }
+  #copertura .cop-eyebrow { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: var(--amaranto); }
+  #copertura h2 { margin: 3px 0 8px; font-size: 16px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; color: var(--ink); }
+  .cop-chiave { display: flex; align-items: flex-start; gap: 9px; margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--ink-soft); }
+  .cop-chiave b { color: var(--ink); }
+  .cop-campione { flex: 0 0 auto; width: 16px; height: 14px; margin-top: 2px; border-radius: 3px; background: oklch(0.37 0.19 20 / 0.62); }
+  .cop-conta { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0 0; }
+  .cop-conta button {
+    font-family: var(--font); font-size: 11.5px; font-weight: 700; color: var(--ink-soft); cursor: pointer;
+    background: var(--bg-sink); border: 1px solid var(--line); border-radius: 999px; padding: 4px 9px; min-height: 28px;
+  }
+  .cop-conta button:hover { border-color: var(--amaranto); color: var(--amaranto); }
+  .cop-conta button[aria-pressed="true"] { background: var(--amaranto); border-color: var(--amaranto); color: #fff; }
+  .cop-piede { display: flex; align-items: center; gap: 14px; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+  .cop-piede button { font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--muted); background: none; border: none; padding: 4px 0; cursor: pointer; }
+  .cop-piede button:hover { color: var(--amaranto); }
+  .cop-come { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--muted); }
+  .cop-come[hidden] { display: none; }
+  /* Spento dall'utente: resta una riga per riaccenderlo. */
+  #copertura.spento { padding: 6px 8px 6px 14px; }
+  #copertura.spento > :not(.cop-piede) { display: none; }
+  #copertura.spento .cop-piede { margin: 0; padding: 0; border: none; }
+  #copertura .cop-mostra { display: none; color: var(--amaranto); }
+  #copertura.spento .cop-mostra { display: inline; }
+  #copertura.spento .cop-nascondi, #copertura.spento .cop-come-btn { display: none; }
+  .cop-ancora { width: 2px; height: 2px; pointer-events: none; }
+  /* Scheda della zona (riusa la scheda del servizio) */
+  .cop-lista { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+  .cop-lista li { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .cop-lista .q15-ico { width: 24px; height: 24px; }
+  .cop-lista b { margin-left: auto; font-weight: 800; color: var(--amaranto); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* Mappa stretta (sotto i 1100 px): la pillola dei 15 minuti va sopra la legenda. */
+  @media (max-width: 1099px) { body.cop-mostrata #q15-toggle { left: auto; right: 152px; transform: none; } }
+
   /* ---------- Telefono: cornice essenziale ----------
      Ogni schermata mostra una cosa, il resto si apre a richiesta. Testata in una riga, barra
      in alto sulla mappa (indietro, ricerca, 2D|3D), solo il tasto posizione, cartiglio in
@@ -999,6 +1095,9 @@
   #servizi-dove, #servizi-chiudi, #servizi-aiuto, .q15-servizi { display: none; }
   @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
     #overview { display: none; }
+    /* tasto posizione tondo come le altre pillole del telefono (era il quadrato di Leaflet) */
+    .leaflet-container .dove-sono.leaflet-bar { border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow-sm); overflow: hidden; }
+    .leaflet-container .dove-sono a { border-radius: 999px; }
     #topbar { padding: 4px 4px 4px 14px; min-height: 50px; }
     #topbar-azioni { display: flex; align-items: center; margin-left: auto; flex: 0 0 auto; }
     #topbar-azioni #about-btn, #topbar-azioni #tour-btn { margin: 0; padding: 8px; min-width: 44px; min-height: 44px; justify-content: center; }
@@ -1260,6 +1359,29 @@
     #cerca-mappa #search { padding-left: 34px; background-position: 11px 50%; }
     #barra-mappa > #vista-dd button { padding: 0 9px; }
   }
+  /* Copertura dei 15 minuti su telefono: la legenda vive nel foglio Livelli, sulla mappa
+     resta una striscia in cima al cartiglio che apre il foglio. */
+  @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+    #livelli-foglio #copertura { position: static; width: auto; max-width: none; border: none; box-shadow: none; background: none; padding: 0; }
+    #livelli-foglio #copertura h2 { font-size: 17px; }
+    #livelli-foglio .cop-chiave { font-size: 13.5px; }
+    #livelli-foglio .cop-conta button { min-height: 40px; padding: 0 13px; font-size: 13px; }
+    #livelli-foglio .cop-piede button { min-height: 40px; font-size: 13px; }
+    #livelli-foglio .cop-come { font-size: 12.5px; }
+    #livelli-copertura:empty, #livelli-copertura:has(> #copertura[hidden]) { display: none; }
+    #livelli-copertura:empty + .lv-sez, #livelli-copertura:has(> #copertura[hidden]) + .lv-sez { border-top: none; }
+    #cartiglio.con-cop { grid-template-areas: "cop cop" "nome azioni" "meta meta"; }
+    #cop-striscia {
+      grid-area: cop; display: flex; align-items: center; gap: 9px; width: 100%; min-height: 40px; margin: -2px 0 4px;
+      padding: 0 0 7px; border: none; border-bottom: 1px solid var(--line-soft); background: none; text-align: left;
+      font-family: var(--font); font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer;
+    }
+    #cop-striscia[hidden] { display: none; }
+    #cop-striscia span:nth-child(2) { flex: 1 1 auto; min-width: 0; }
+    #cop-striscia b { color: var(--ink); }
+    #cop-striscia .cop-freccia { color: var(--faint); font-size: 16px; }
+    .cop-lista li { font-size: 14px; }
+  }
   @media (max-width: 720px) and (prefers-reduced-motion: reduce), (max-height: 500px) and (pointer: coarse) and (prefers-reduced-motion: reduce) {
     .foglio, .foglio.aperto, #q15-panel, #q15-panel.visible, #scheda-servizio, #scheda-servizio.aperta { transition: none; }
   }
@@ -1274,9 +1396,492 @@
     body { height: auto; overflow: visible; }
   }
 /*<<VISTA_3D_CSS>>*/
+
+  /* ---------- Intro animata, "il mosaico" (vedi MAPPA_INTRO in testa) ---------- */
+  #intro { display: none; }
+  .intro-on #intro {
+    display: block; position: fixed; inset: 0; z-index: 9000; overflow: hidden;
+    font-family: var(--font); color: var(--ink); cursor: pointer;
+    -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+  }
+  #intro .intro-fondo { position: absolute; inset: 0; background: var(--bg); transition: opacity .22s ease-out; }
+  /* Il palco ricalca l'area della mappa (#map-wrap): contorno nella zona di sopra, cartello e
+     contatore in basso a sinistra (dove poi stanno cartiglio e scheda). Qui le stime, valide
+     prima che la pagina sia letta (telefono: sotto la testata; desktop: a destra della barra
+     laterale e sotto testata e barra dei numeri); a pagina letta lo script di fondo le
+     sostituisce con le misure vere (dispone). */
+  #intro .intro-palco {
+    --pw: 100vw;
+    position: absolute; left: 0; top: 57px; right: 0; bottom: 0;
+    display: grid; grid-template-rows: minmax(0, 1fr) auto auto; justify-items: start; row-gap: clamp(8px, 2vh, 20px);
+    padding: clamp(16px, 4vh, 36px) clamp(16px, 3vw, 36px) calc(clamp(18px, 4vh, 34px) + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 721px) and (min-height: 501px), (min-width: 721px) and (pointer: fine) {
+    #intro .intro-palco { --pw: calc(100vw - var(--sidebar-w)); left: var(--sidebar-w); top: 116px; }
+  }
+  @media (min-width: 721px) and (max-width: 860px) and (min-height: 501px), (min-width: 721px) and (max-width: 860px) and (pointer: fine) {
+    #intro .intro-palco { top: 100px; }
+  }
+  #intro .intro-zona { grid-row: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+
+  /* Il cartello: scritta grande in basso a sinistra, sopra la citta' ma senza coprirla. Entra con
+     una tendina: una linea sottile si disegna, poi il testo sale da sotto di lei (il cartello taglia
+     sul bordo in basso, dove sta la linea). Una riga sola: il corpo segue la larghezza del palco e
+     lo script lo stringe se ancora non basta, niente parola sola a capo. Stessi carattere, peso e
+     spaziatura dell'h1 della testata, cosi' il volo e' solo uno spostamento e una scala. */
+  #intro .intro-titolo {
+    grid-row: 2; position: relative; margin: 0; padding-bottom: .16em; width: max-content; transform-origin: 0 0;
+    font-size: clamp(24px, min(calc(var(--pw) * .1), 10vh), 64px); font-weight: 800; letter-spacing: -0.015em; line-height: 1.05;
+    color: var(--ink); white-space: nowrap; text-shadow: 0 0 8px var(--bg), 0 0 2px var(--bg);
+    clip-path: inset(-.3em -.3em 0 -.3em);
+  }
+  #intro .intro-titolo::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--amaranto);
+    transform-origin: 0 50%; transform: scaleX(0); animation: intro-linea .4s .05s var(--ease) forwards;
+  }
+  #intro .intro-titolo .tt { display: inline-block; transform: translateY(115%); animation: intro-sale .6s .3s var(--ease) forwards; }
+  #intro .intro-titolo span:not(.tt) { color: var(--amaranto); }
+  .intro-breve #intro .intro-titolo::after { animation-duration: .2s; }
+  .intro-breve #intro .intro-titolo .tt { animation-duration: .3s; animation-delay: .1s; }
+  #intro.volo .intro-titolo::after { opacity: 0; transition: opacity .15s; }
+  #intro .intro-titolo.volato { animation: none !important; opacity: 0 !important; }
+
+  /* Il contorno di Roma: un tratto solo, amaranto, 2 px. La dimensione la da' lo script
+     (dispone), che lo tiene tutto dentro il palco: la 3D si allinea al disegno e fuori dal
+     suo canvas non puo' disegnare. */
+  #intro-contorno { display: block; flex: none; overflow: visible; transform-origin: 0 0; transition: opacity .22s ease-out, transform .65s var(--ease); }
+  /* Niente non-scaling-stroke: Chromium metterebbe il tratteggio in pixel di schermo e la
+     lunghezza in unita' del viewBox, e il disegno finirebbe a un terzo del tempo. Gli spessori
+     (2 px a schermo) li mette lo script, in unita' del viewBox. --L e' la quota dell'anello
+     principale sul tratto intero (data-anello): il tratteggio riparte a ogni sottopercorso. */
+  #intro-contorno path { fill: none; stroke: var(--amaranto); stroke-width: 6; stroke-linejoin: round; }
+  #intro-tratto { stroke-dasharray: var(--L, 1) var(--L, 1); stroke-dashoffset: var(--L, 1); animation: intro-tratto .8s cubic-bezier(.45, .05, .25, 1) forwards; }
+  .intro-breve #intro-tratto { animation-duration: .35s; }
+  /* A tratto finito il tratteggio serve solo a nascondere: via lui, i giunti tornano quelli veri. */
+  #intro-contorno.fatto #intro-tratto { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
+  /* La luce che aspetta la 3D: oro, un tratto corto e luminoso (nucleo, alone, coda) che
+     gira in loop lungo il contorno, che resta disegnato. Le tre luci hanno la testa nello
+     stesso punto: l'offset parte dalla loro lunghezza. */
+  #intro-contorno .luce { stroke: var(--oro); stroke-linecap: round; opacity: 0; transition: opacity .25s; animation-duration: 2.1s; animation-timing-function: linear; animation-iteration-count: infinite; }
+  #intro-contorno .luce-nucleo { stroke-dasharray: .05 .95; animation-name: intro-luce-5; }
+  #intro-contorno .luce-alone { stroke-opacity: .28; stroke-dasharray: .05 .95; animation-name: intro-luce-5; }
+  #intro-contorno .luce-coda { stroke-opacity: .5; stroke-dasharray: .13 .87; animation-name: intro-luce-13; }
+  #intro.attesa .luce { opacity: 1; }
+
+  /* Il contatore, la riga sotto il cartello: stile dei numeri della barra #overview (numero
+     amaranto in grassetto, etichetta piccola in maiuscolo), a cifre tabellari. Compare alla prima
+     tessera a terra, si spegne al volo. */
+  #intro .intro-conta {
+    grid-row: 3; display: flex; align-items: flex-start; justify-content: flex-start; margin-top: 8px; pointer-events: none;
+    opacity: 0; transform: translateY(6px); transition: opacity .22s ease-out, transform .3s var(--ease);
+  }
+  .intro-breve #intro .intro-conta { display: none; }
+  .intro-breve #intro .intro-palco { grid-template-rows: minmax(0, 1fr) auto; }
+  #intro.conta-on .intro-conta { opacity: 1; transform: none; }
+  #intro.volo .intro-conta { opacity: 0; transform: none; transition: opacity .15s ease-out; }
+  #intro .ic-voce { text-shadow: 0 0 6px var(--bg), 0 0 2px var(--bg); display: flex; flex-direction: column; align-items: center; padding: 0 clamp(8px, 2.6vw, 22px); border-left: 1px solid var(--line); }
+  #intro .ic-voce:first-child { border-left: 0; padding-left: 0; }
+  #intro .ic-n { text-align: center; font-size: clamp(18px, min(6vw, 7vh), 28px); font-weight: 800; color: var(--amaranto); line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  #intro .ic-l { margin-top: 5px; text-align: center; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.055em; color: var(--faint); line-height: 1.2; text-shadow: 0 0 6px var(--bg), 0 0 2px var(--bg); }
+  @media (max-width: 380px) { #intro .ic-l { font-size: 10px; letter-spacing: 0.04em; } }
+
+  /* Salta: nella fascia della testata, in alto a destra, dove non copre nulla (cartello e
+     contatore stanno in basso nel palco). */
+  #intro .intro-salta {
+    position: absolute; top: 8px; right: max(12px, env(safe-area-inset-right, 0px)); min-height: 38px; padding: 0 16px;
+    border-radius: 999px; border: 1px solid currentColor; background: transparent; color: inherit;
+    font: 600 13px/1 var(--font); letter-spacing: .02em; cursor: pointer; opacity: 0;
+    animation: intro-entra .4s .45s var(--ease) forwards;
+  }
+  #intro.volo .intro-salta, #intro.saltata .intro-salta { opacity: 0 !important; animation: none; transition: opacity .15s; }
+
+  /* Passaggio alla 3D: sotto c'e' gia' la mappa vera, piatta e nella stessa inquadratura,
+     con la stessa linea: fondo e disegno si dissolvono sul posto (non cambia nulla a
+     schermo). Titolo e contatore restano, su un'intro trasparente che prende ancora i tocchi. */
+  #intro.verso-3d .intro-fondo, #intro.verso-3d #intro-contorno { opacity: 0; }
+  /* Senza 3D (o oltre l'attesa): il fondo si apre sulla mappa vera, il disegno si posa su di
+     lei (transform dello script) e si spegne. */
+  #intro.posa .intro-fondo { opacity: 0; transition-duration: .5s; }
+  #intro.svg-via #intro-contorno { opacity: 0; transition-duration: .2s, .65s; }
+  #intro.saltata { opacity: 0; transition: opacity .2s ease-out; pointer-events: none; }
+  /* Sotto l'intro la 3D ha il fondo crema, non il beige della tela vuota. */
+  .intro-on #vista-3d { background: var(--bg); }
+
+  /* L'interfaccia c'e' ma e' trasparente: solo opacita', mai display ne' transform sui
+     contenitori misurati dalla 3D (testata, barra dei numeri, cartiglio, barra della mappa).
+     Il fondo della testata si apre con l'entrata (intro-ui); l'h1 vero resta invisibile finche'
+     il titolo dell'intro non e' atterrato (intro-hh). Con intro-ui, a meta' del volo, tutto entra
+     in ~380 ms, sfalsato (--d, 0-120 ms); a fine intro le classi vanno via e resta lo stato naturale. */
+  .intro-nasc:not(.intro-ui) #topbar { background-color: transparent !important; }
+  .intro-hh #topbar h1 { opacity: .001 !important; }
+  .intro-hs #topbar h1 { transition: opacity .1s linear; }
+  .intro-nasc:not(.intro-ui) #topbar .brand-titles p, .intro-nasc:not(.intro-ui) #topbar .donor,
+  .intro-nasc:not(.intro-ui) #topbar-azioni, .intro-nasc:not(.intro-ui) #amaranto-rule,
+  .intro-nasc:not(.intro-ui) #overview, .intro-nasc:not(.intro-ui) #sidebar, .intro-nasc:not(.intro-ui) #barra-mappa,
+  .intro-nasc:not(.intro-ui) #cartiglio, .intro-nasc:not(.intro-ui) #drawer-toggle, .intro-nasc:not(.intro-ui) #legend,
+  .intro-nasc:not(.intro-ui) #attribution, .intro-nasc:not(.intro-ui) #northarrow, .intro-nasc:not(.intro-ui) #inset,
+  .intro-nasc:not(.intro-ui) #q15-toggle, .intro-nasc:not(.intro-ui) .leaflet-control-container,
+  .intro-nasc:not(.intro-ui) #vista-3d .maplibregl-ctrl-top-left, .intro-nasc:not(.intro-ui) #vista-3d .maplibregl-ctrl-top-right,
+  .intro-nasc:not(.intro-ui) #vista-3d .maplibregl-ctrl-bottom-left, .intro-nasc:not(.intro-ui) #vista-3d .maplibregl-ctrl-bottom-right,
+  .intro-nasc:not(.intro-ui) #vista-3d .v3d-ui, .intro-nasc:not(.intro-ui) #vista-3d .v3d-etichetta { opacity: .001 !important; }
+  /* I contenitori pesanti hanno il loro strato: a .001 (invisibile) il contenuto si dipinge e si
+     rasterizza durante l'intro, e l'entrata e' solo un cambio d'opacita' sul compositor; a 0
+     Chrome non dipinge nulla e all'entrata rasterizza tutto in un colpo (uno stallo di ~250 ms). */
+  .intro-nasc #overview, .intro-nasc #sidebar, .intro-nasc #barra-mappa, .intro-nasc #cartiglio, .intro-nasc .leaflet-control-container { will-change: opacity; }
+  .intro-ui #topbar, .intro-ui #topbar .brand-titles p, .intro-ui #topbar .donor, .intro-ui #topbar-azioni, .intro-ui #amaranto-rule,
+  .intro-ui #overview, .intro-ui #sidebar, .intro-ui #barra-mappa, .intro-ui #cartiglio, .intro-ui #drawer-toggle, .intro-ui #legend,
+  .intro-ui #attribution, .intro-ui #northarrow, .intro-ui #inset, .intro-ui #q15-toggle, .intro-ui .leaflet-control-container,
+  .intro-ui #vista-3d .maplibregl-ctrl-top-left, .intro-ui #vista-3d .maplibregl-ctrl-top-right,
+  .intro-ui #vista-3d .maplibregl-ctrl-bottom-left, .intro-ui #vista-3d .maplibregl-ctrl-bottom-right,
+  .intro-ui #vista-3d .v3d-ui, .intro-ui #vista-3d .v3d-etichetta {
+    transition: opacity .38s var(--ease) var(--d, 0s), background-color .38s var(--ease) var(--d, 0s) !important;
+  }
+  .intro-ui #overview { --d: .04s; }
+  .intro-ui #sidebar, .intro-ui #barra-mappa { --d: .08s; }
+  .intro-ui #cartiglio, .intro-ui #drawer-toggle, .intro-ui #legend, .intro-ui #attribution, .intro-ui #northarrow,
+  .intro-ui #inset, .intro-ui #q15-toggle, .intro-ui .leaflet-control-container, .intro-ui #vista-3d .maplibregl-ctrl-top-left,
+  .intro-ui #vista-3d .maplibregl-ctrl-top-right, .intro-ui #vista-3d .maplibregl-ctrl-bottom-left,
+  .intro-ui #vista-3d .maplibregl-ctrl-bottom-right, .intro-ui #vista-3d .v3d-ui, .intro-ui #vista-3d .v3d-etichetta { --d: .12s; }
+
+  @keyframes intro-tratto { to { stroke-dashoffset: 0; } }
+  @keyframes intro-entra { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes intro-linea { to { transform: scaleX(1); } }
+  @keyframes intro-sale { to { transform: none; } }
+  @keyframes intro-luce-5 { from { stroke-dashoffset: .05; } to { stroke-dashoffset: -.95; } }
+  @keyframes intro-luce-13 { from { stroke-dashoffset: .13; } to { stroke-dashoffset: -.87; } }
 </style>
 </head>
 <body>
+
+<!-- Intro animata, "il mosaico": prima di tutto il resto, cosi' parte al primo disegno
+     mentre il browser legge dati e codice della mappa. Decorativa: un tocco, un clic o un
+     tasto la salta. Il palco ricalca l'area della mappa: il contorno e' un tratto solo, il
+     cartello e il contatore stanno in basso a sinistra. -->
+<div id="intro" aria-hidden="true">
+  <div class="intro-fondo"></div>
+  <div class="intro-palco">
+    <h2 class="intro-titolo"><span class="tt">Quartieri di Roma <span>2026</span></span></h2>
+    <div class="intro-zona"><<INTRO_SVG>></div>
+    <div class="intro-conta">
+      <div class="ic-voce"><span class="ic-n" data-k="RIONE">0</span><span class="ic-l">rioni</span></div>
+      <div class="ic-voce"><span class="ic-n" data-k="QUARTIERE">0</span><span class="ic-l">quartieri</span></div>
+      <div class="ic-voce"><span class="ic-n" data-k="ZONA FUNZIONALE">0</span><span class="ic-l">zone funzionali</span></div>
+    </div>
+  </div>
+  <button class="intro-salta" type="button" tabindex="-1">Salta</button>
+</div>
+<script>
+(function () {
+  "use strict";
+  var I = window.MAPPA_INTRO, el = document.getElementById("intro"), html = document.documentElement;
+  if (!I || !I.attiva) { el.parentNode.removeChild(el); return; }
+  var finito = false;
+  // Qualunque cosa vada storta qui dentro, l'interfaccia non resta mai nascosta.
+  function ripristina() {
+    finito = true;
+    if (el.parentNode) el.parentNode.removeChild(el);
+    html.className = html.className.replace(/\s*\bintro-(?:on|nasc|ui|hh|hs|breve)\b/g, "");
+    I._fine();
+    // La 3D e' diventata pronta mentre l'intro usciva (oltre l'attesa, o nel volo) e nessuno le ha
+    // dato il via: parte adesso, come a intro gia' finita (versione breve, senza intro).
+    var p = I.ponte;
+    if (p && p.stato === "pronta") { p.stato = "partita"; try { p.parti(true); } catch (e) {} }
+  }
+  try { avvia(); } catch (e) { ripristina(); }
+
+  function avvia() {
+    var BREVE = !!I.breve;
+    // Tempi (ms). Tratto: 0,8 s (breve 0,35). ATTESA_3D: quanto la 3D puo' farsi aspettare
+    // dall'inizio; oltre, l'intro esce e la 3D parte da sola appena pronta. RETE: dopo il
+    // via del mosaico, se la 3D non dice "composta" si esce comunque (il mosaico dura circa 2,6 s:
+    // la rete e' larga). CARTELLO: quando la tendina del cartello e' finita di salire. L'interfaccia
+    // entra a meta' del volo del titolo, non dopo.
+    var TRATTO = BREVE ? 350 : 800, ATTESA_3D = BREVE ? 1500 : 6000, VOLO = BREVE ? 400 : 480;
+    var RETE = 7500, CARTELLO = BREVE ? 650 : 1250, ENTRATA = 380, SFASAMENTO = 120, GUARDIA = 22500;
+    var palco = el.querySelector(".intro-palco"), zona = el.querySelector(".intro-zona"), titolo = el.querySelector(".intro-titolo");
+    var svg = document.getElementById("intro-contorno"), tratto = document.getElementById("intro-tratto");
+    // L'orologio dell'intro (inizio, tratto, attesa della 3D) parte quando la scheda si vede.
+    var inizio = performance.now();
+    // fase: tratto > luce (tratto finito, si decide) > mosaico (3D partita) > volo > fine;
+    // oppure posa (si posa sulla 2D) > volo.
+    var fase = "tratto", saltata = false, timer = 0, rete = 0, uiT = 0, fineT = 0, luci = null, ro = null, orologioVia = false, prontoTitolo = 0;
+    var VBW = svg.viewBox.baseVal.width, VBH = svg.viewBox.baseVal.height, larghezzaSvg = VBW;
+    var OVEST = +svg.getAttribute("data-ovest"), EST = +svg.getAttribute("data-est"), NORD = +svg.getAttribute("data-nord"), SUD = +svg.getAttribute("data-sud");
+    // Quota dell'anello principale sul tratto intero: il tratteggio riparte a ogni sottopercorso,
+    // quindi il disegno scorre su quella lunghezza e finisce davvero alla fine dei 0,8 s.
+    svg.style.setProperty("--L", String(parseFloat(svg.getAttribute("data-anello")) || 1));
+
+    function scriviFlag() { try { localStorage.setItem("rq-intro", "1"); } catch (e) {} }
+    function testo(n) {   // rettangolo del testo di un elemento (non del suo contenitore)
+      var r = document.createRange(); r.selectNodeContents(n);
+      var b = r.getBoundingClientRect();
+      return { left: b.left, top: b.top, width: b.width, height: b.height };
+    }
+    // Gli spessori sono in unita' del viewBox (non-scaling-stroke falserebbe il tratteggio, che
+    // andrebbe in pixel di schermo): 2 px il tratto, 3,5 / 9 / 2 px nucleo, alone e coda della luce.
+    function spessori() {
+      var k = VBW / larghezzaSvg;
+      tratto.style.strokeWidth = (2 * k).toFixed(3);
+      if (luci) [2, 9, 3.5].forEach(function (px, i) { luci[i].style.strokeWidth = (px * k).toFixed(3); });
+    }
+
+    // Il palco sull'area della mappa (#map-wrap); prima che esista, valgono le stime del CSS.
+    // Il cartello sta su una riga sola; il contorno e' il piu' grande che sta nella zona sopra
+    // di lui, con almeno 16 px di aria sopra e sotto (e 8 ai lati: tiene dentro anche il mezzo
+    // pixel del tratto).
+    function dispone() {
+      if (finito || fase === "volo") return;
+      var mw = document.getElementById("map-wrap");
+      if (mw) {
+        var r = mw.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          var s = palco.style;
+          s.left = r.left + "px"; s.top = r.top + "px"; s.width = r.width + "px"; s.height = r.height + "px"; s.right = "auto"; s.bottom = "auto";
+          s.setProperty("--pw", r.width + "px");
+        }
+      }
+      titolo.style.fontSize = "";
+      var disp = palco.clientWidth - 2 * (parseFloat(getComputedStyle(palco).paddingLeft) || 14), w = titolo.offsetWidth;
+      if (w > disp && w > 0) titolo.style.fontSize = Math.max(14, Math.floor(parseFloat(getComputedStyle(titolo).fontSize) * disp / w * 10) / 10) + "px";
+      var z = zona.getBoundingClientRect();
+      larghezzaSvg = Math.max(40, Math.min(z.width - 16, (z.height - 32) * VBW / VBH));
+      svg.style.width = larghezzaSvg + "px"; svg.style.height = (larghezzaSvg * VBH / VBW) + "px";
+      spessori();
+    }
+
+    dispone();
+    function rimisura() { dispone(); var p = I.ponte; if (p && p.stato === "pronta") { try { p.allinea(); } catch (e) {} } }
+    window.addEventListener("resize", rimisura);
+    window.addEventListener("load", rimisura);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(rimisura);
+
+    // ---- contratto con la 3D (vista-3d/aggancio.js) ----
+    // Il disegno nella finestra (null se l'intro e' saltata o finita): la 3D mette la camera qui sopra.
+    I.disegno = function () {
+      if (saltata || finito) return null;
+      dispone();
+      var b = svg.getBoundingClientRect();
+      return { ovest: OVEST, est: EST, nord: NORD, sud: SUD, left: b.left, top: b.top, width: b.width };
+    };
+    // Gli anelli del contorno in gradi [[[lon, lat], ...], ...], chiusi (il primo punto torna in
+    // fondo), ricavati dal d del tratto: l'inverso esatto della proiezione di build.py (x lineare in
+    // longitudine, y in Mercatore, stessa scala; l'altezza del viewBox e' arrotondata per eccesso,
+    // quindi la scala e' quella della larghezza).
+    var anelli = null;
+    I.contorno = function () {
+      if (anelli) return anelli;
+      var scala = VBW / (EST - OVEST);
+      var maxy = Math.log(Math.tan(Math.PI / 4 + NORD * Math.PI / 360)) * 180 / Math.PI;
+      anelli = [];
+      tratto.getAttribute("d").split("M").forEach(function (sp) {
+        if (!sp) return;
+        var pts = sp.replace(/Z/g, "").split("L").map(function (c) {
+          var xy = c.split(" "), y = maxy - (+xy[1]) / scala;
+          return [OVEST + (+xy[0]) / scala, (2 * Math.atan(Math.exp(y * Math.PI / 180)) - Math.PI / 2) * 180 / Math.PI];
+        });
+        pts.push(pts[0].slice());
+        anelli.push(pts);
+      });
+      return anelli;
+    };
+    // L'aggancio avvisa che ponte.stato e' cambiato (pronta o no).
+    I.ponteCambiato = function () { valuta(false); };
+    // Conteggi cumulativi per tipo (atterrate, totali): { RIONE, QUARTIERE, "ZONA FUNZIONALE" }. Il
+    // contatore compare alla prima tessera a terra, non al via.
+    var numeri = {}, vivi = {}, contaOn = false;
+    [].forEach.call(el.querySelectorAll(".ic-n"), function (n) { numeri[n.getAttribute("data-k")] = n; });
+    I.conta = function (atterrate, totali) {
+      var qualcuna = false;
+      for (var k in numeri) {
+        var v = (atterrate && atterrate[k]) || 0, t = (totali && totali[k]) || 0;
+        if (t) numeri[k].style.minWidth = String(t).length + "ch";   // cifre tabellari: le etichette non ballano
+        if (vivi[k] !== v) { vivi[k] = v; numeri[k].textContent = v; }
+        if (v > 0) qualcuna = true;
+      }
+      if (qualcuna && !contaOn && !BREVE && fase === "mosaico") { contaOn = true; el.classList.add("conta-on"); }
+    };
+    // La citta' e' composta: parte il volo del titolo (la rete di sicurezza e' piu' sotto).
+    I.composta = function () { if (fase === "mosaico") volo(); };
+
+    // ---- il tratto, poi la decisione ----
+    function fineTratto() {
+      if (fase !== "tratto" || !orologioVia) return;
+      fase = "luce";
+      svg.classList.add("fatto");
+      valuta(false);
+    }
+    tratto.addEventListener("animationend", fineTratto);
+    // Scheda aperta in background: il tratto non gira e l'orologio parte alla prima volta che si vede.
+    function orologio() {
+      if (orologioVia) return;
+      orologioVia = true;
+      inizio = performance.now();
+      prontoTitolo = inizio + CARTELLO;
+      setTimeout(fineTratto, TRATTO + 150);
+      setTimeout(guardia, GUARDIA);
+    }
+    function seVisibile() { if (!document.hidden) { document.removeEventListener("visibilitychange", seVisibile); orologio(); } }
+    if (document.hidden) document.addEventListener("visibilitychange", seVisibile); else orologio();
+    function alDcl() {
+      rimisura();
+      try { if (window.ResizeObserver) { ro = new ResizeObserver(rimisura); ro.observe(document.getElementById("map-wrap")); } } catch (e) {}
+      valuta(false);
+    }
+    document.addEventListener("DOMContentLoaded", alDcl);
+
+    // La luce: un tratto corto e luminoso gira lungo il contorno finche' la 3D e' pronta.
+    function mostraLuce() {
+      if (!luci) {
+        luci = ["coda", "alone", "nucleo"].map(function (k) {
+          var q = tratto.cloneNode(false);
+          // solo l'anello principale: il tratteggio riparte a ogni sottopercorso, e l'isoletta
+          // del Municipio XV farebbe un secondo giro e un buco nel primo
+          q.removeAttribute("id"); q.setAttribute("class", "luce luce-" + k);
+          q.setAttribute("d", "M" + tratto.getAttribute("d").split("M")[1]);
+          svg.appendChild(q);
+          return q;
+        });
+        spessori();
+        void svg.getBoundingClientRect();
+      }
+      el.classList.add("attesa");
+    }
+
+    // Tratto finito (o 3D cambiata, o pagina letta): si decide. Pronta, passaggio subito; in
+    // arrivo, la luce corre fino a ATTESA_3D dall'inizio; senza 3D (?vista=2d o ponte "no"), il
+    // contorno si posa sulla 2D. Mai una posa ferma. La pagina va letta (mappa e ponte esistono).
+    function valuta(scaduta) {
+      if (fase !== "luce") return;
+      clearTimeout(timer);
+      var p = I.ponte;
+      if (document.readyState === "loading") { mostraLuce(); return; }
+      if (p && p.stato === "pronta") { passaggio(p); return; }
+      if (p && p.stato === "attesa") {
+        var resta = ATTESA_3D - (performance.now() - inizio);
+        if (resta > 0 && !scaduta) { mostraLuce(); timer = setTimeout(function () { valuta(true); }, resta); return; }
+        // la 3D si e' fatta aspettare troppo: via l'intro (titolo in volo e interfaccia), la 3D parte da sola
+        fase = "posa";
+        el.classList.add("posa", "svg-via");
+        volo();
+        return;
+      }
+      posa();
+    }
+
+    // Passaggio: sotto l'intro la 3D e' gia' piatta e allineata al disegno; fondo e disegno si
+    // dissolvono sul posto e la 3D parte all'inizio della dissolvenza. L'intro resta, trasparente,
+    // con titolo e contatore, e prende ancora tocchi e tasti.
+    function passaggio(p) {
+      fase = "mosaico";
+      p.stato = "partita";
+      try { p.allinea(); } catch (e) {}
+      el.classList.add("verso-3d");
+      rete = setTimeout(function () { if (fase === "mosaico") volo(); }, RETE);
+      try { p.parti(); } catch (e) { volo(); }
+    }
+
+    // Senza 3D il contorno si posa sulla mappa vera (stessi confini, stessa proiezione) e si spegne.
+    function posa() {
+      fase = "posa";
+      if (typeof I.bersaglio === "function") {
+        var r = I.bersaglio(OVEST, EST, NORD, SUD), b = svg.getBoundingClientRect();
+        if (r && b.width > 0) {
+          svg.style.transform = "translate(" + (r.left - b.left) + "px," + (r.top - b.top) + "px) scale(" + (r.width / b.width) + "," + (r.height / b.height) + ")";
+        }
+      }
+      el.classList.add("posa");
+      timer = setTimeout(function () { el.classList.add("svg-via"); volo(); }, 520);
+    }
+
+    // Il titolo vola nell'h1 della testata (FLIP: si misurano i due testi, poi translate e scale).
+    // L'h1 vero resta invisibile finche' il titolo non arriva; poi lo scambio e' nello stesso
+    // fotogramma (se le proporzioni non tornano, dissolvenza incrociata negli ultimi 100 ms).
+    // L'interfaccia entra a meta' volo (intro-ui), sovrapposta al titolo che arriva.
+    function avviaUI() { html.classList.add("intro-ui"); }
+    function volo() {
+      if (fase === "volo" || fase === "fine") return;
+      // il cartello deve essere finito di entrare (tendina salita) prima di volare
+      var resta = prontoTitolo - performance.now();
+      if (resta > 0) { clearTimeout(timer); timer = setTimeout(volo, resta + 20); return; }
+      clearTimeout(timer); clearTimeout(rete);
+      fase = "volo";
+      el.classList.add("volo");
+      var viaUI = Math.round(VOLO * 0.52), h1 = document.querySelector("#topbar h1");
+      var da = testo(titolo), a = h1 ? testo(h1) : null;
+      if (!a || !da.width || !a.width) {
+        // manca l'h1: niente volo, l'interfaccia entra subito
+        avviaUI(); atterrato();
+        fineT = setTimeout(fine, ENTRATA + SFASAMENTO + 40);
+        return;
+      }
+      var o = titolo.getBoundingClientRect(), sc = a.width / da.width;
+      var tx = a.left - o.left - (da.left - o.left) * sc, ty = a.top - o.top - (da.top - o.top) * sc;
+      var sfuma = Math.abs(a.height / da.height - sc) > 0.03;
+      titolo.style.transition = "transform " + VOLO + "ms var(--ease)";
+      titolo.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + sc + ")";
+      if (sfuma) timer = setTimeout(function () {
+        if (fase === "volo") { html.classList.add("intro-hs"); html.classList.remove("intro-hh"); titolo.style.transition += ", opacity .1s linear"; titolo.classList.add("volato"); }
+      }, VOLO - 100);
+      uiT = setTimeout(avviaUI, viaUI);
+      timer = setTimeout(atterrato, VOLO);
+      fineT = setTimeout(fine, Math.max(VOLO, viaUI + ENTRATA + SFASAMENTO) + 40);
+    }
+    // Atterrato: l'h1 vero compare e il titolo dell'intro sparisce nello stesso fotogramma.
+    function atterrato() {
+      if (fase !== "volo") return;
+      html.classList.remove("intro-hh");
+      titolo.style.transition = "none"; titolo.classList.add("volato");
+    }
+    function fine() {
+      if (finito) return;
+      fase = "fine";
+      scriviFlag();
+      rimuovi();
+    }
+    function rimuovi() {
+      clearTimeout(timer); clearTimeout(rete); clearTimeout(uiT); clearTimeout(fineT);
+      document.removeEventListener("keydown", tasto, true);
+      document.removeEventListener("DOMContentLoaded", alDcl);
+      document.removeEventListener("visibilitychange", seVisibile);
+      window.removeEventListener("resize", rimisura);
+      window.removeEventListener("load", rimisura);
+      if (ro) { try { ro.disconnect(); } catch (e) {} ro = null; }
+      ripristina();
+    }
+    function guardia() { if (!finito && fase !== "fine") { fase = "fine"; scriviFlag(); rimuovi(); } }
+
+    // ---- salto (tocco, clic, tasto) ----
+    // Prima del passaggio la 3D parte col suo ingresso normale; dopo, si porta allo stato finale.
+    // Niente volo: l'interfaccia c'e' subito e l'intro svanisce in ~200 ms. MAPPA_INTRO.saltata
+    // dice alla 3D che si e' saltato, in ogni fase: se la trova, finisce subito su Roma.
+    function salta() {
+      if (fase === "fine" || finito) return;
+      var prima = fase === "tratto" || fase === "luce" || fase === "posa", p = I.ponte;
+      clearTimeout(timer); clearTimeout(rete); clearTimeout(uiT); clearTimeout(fineT);
+      scriviFlag();
+      I.saltata = true;
+      if (p && prima && p.stato === "pronta") {
+        // la 3D era pronta e aspettava il via: parte e salta subito allo stato finale
+        p.stato = "partita";
+        try { p.allinea(); p.parti(); p.salta(); } catch (e) {}
+      } else if (p && p.stato === "partita") {
+        try { p.salta(); } catch (e) {}
+      }
+      saltata = true;
+      fase = "fine";
+      html.className = html.className.replace(/\s*\bintro-(?:nasc|ui|hh|hs)\b/g, "");
+      el.classList.add("saltata");
+      setTimeout(rimuovi, 220);
+    }
+    function tasto(e) {
+      if (e.key === "Tab" || e.metaKey || e.ctrlKey) { salta(); return; }
+      e.preventDefault(); e.stopPropagation(); salta();
+    }
+    el.addEventListener("pointerdown", function (e) { e.preventDefault(); salta(); });
+    document.addEventListener("keydown", tasto, true);
+  }
+})();
+</script>
 
 <a class="salta-mappa" id="salta-mappa" href="#map">Vai alla mappa</a>
 
@@ -1297,7 +1902,7 @@
 
 <div id="overview">
   <div class="stats" id="overview-stats"></div>
-  <div id="vista-dd" role="group" aria-label="Vista della mappa" hidden><button type="button" data-vista="2d" aria-pressed="true">2D</button><button type="button" data-vista="3d" aria-pressed="false">3D</button></div>
+  <div id="vista-dd" role="group" aria-label="Vista della mappa" hidden><button type="button" data-vista="3d" aria-pressed="false">3D</button><button type="button" data-vista="2d" aria-pressed="true">2D</button></div>
   <button id="about-btn" type="button" aria-haspopup="dialog" aria-expanded="false"><span class="ic">i</span> Cos'&egrave; la geografia 2026</button>
   <button id="tour-btn" type="button" aria-label="Avvia la guida alla mappa"><span class="ic">?</span> Guida alla mappa</button>
 </div>
@@ -1338,6 +1943,7 @@
       <div id="cerca-risultati"><div id="cerca-aree"></div></div>
     </div>
     <div id="cartiglio">
+      <button type="button" id="cop-striscia" aria-controls="livelli-foglio" hidden><span class="cop-campione" aria-hidden="true"></span><span id="cop-striscia-testo"></span><span class="cop-freccia" aria-hidden="true">&rsaquo;</span></button>
       <div class="ct-nome" id="cartiglio-nome"></div>
       <div class="ct-meta" id="cartiglio-meta"></div>
       <div class="ct-azioni" id="cartiglio-azioni">
@@ -1348,6 +1954,7 @@
       <button type="button" class="foglio-maniglia" id="livelli-maniglia" aria-label="Chiudi i livelli"></button>
       <div class="foglio-testa"><span class="foglio-titolo">Livelli</span><button type="button" class="foglio-chiudi" id="livelli-chiudi" aria-label="Chiudi">&times;</button></div>
       <div class="foglio-corpo">
+        <div class="lv-sez" id="livelli-copertura"></div>
         <div class="lv-sez" id="livelli-municipi"><span class="field-label">Municipi</span></div>
         <div class="lv-sez" id="livelli-tipi"></div>
         <div class="lv-sez" id="livelli-q15-sez"><button type="button" id="livelli-q15"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 22l2-6 3 3v3"/><path d="M8 12l2-4 4 1 2 4 3 1"/><path d="M10 8l-1 7"/></svg>A piedi in 15 minuti da un punto</button></div>
@@ -1363,11 +1970,20 @@
       </div>
     </div>
 
+    <div id="copertura" role="region" aria-label="Dove mancano servizi a 15 minuti a piedi" hidden>
+      <span class="cop-eyebrow">A piedi in 15 minuti</span>
+      <h2>Dove mancano servizi vicini</h2>
+      <p class="cop-chiave"><span class="cop-campione" aria-hidden="true"></span><span id="cop-quota"></span></p>
+      <div class="cop-conta" id="cop-conta" role="group" aria-label="Quali servizi contare"></div>
+      <p class="cop-come" id="cop-come" hidden>Esagoni di 250 metri dove abitano almeno 50 persone (stima GHS-POP 2025, Commissione europea). Per ognuno il tempo a piedi, a 4,8 km/h sulle strade di OpenStreetMap, fino al nido, alla scuola dell'infanzia, primaria e media, alla farmacia e al parco pi&ugrave; vicini. Case della Comunit&agrave; e pronto soccorso sono pochi per tutta la citt&agrave;: non colorano la mappa, li trovi toccando una zona. Tempi indicativi.</p>
+      <div class="cop-piede"><button type="button" class="cop-nascondi" id="cop-nascondi">Nascondi</button><button type="button" class="cop-come-btn" id="cop-come-btn" aria-expanded="false" aria-controls="cop-come">Come si calcola</button><button type="button" class="cop-mostra" id="cop-mostra">Mostra dove mancano servizi a 15 minuti</button></div>
+    </div>
+
     <div id="servizi-panel" hidden>
       <button type="button" class="foglio-maniglia" id="servizi-maniglia" aria-label="Chiudi i servizi"></button>
       <div id="servizi-panel-head" role="button" tabindex="0" aria-expanded="true"><span>Servizi</span><span class="sp-dove" id="servizi-dove"></span><span class="caret">&#9660;</span></div>
       <button type="button" class="foglio-chiudi" id="servizi-chiudi" aria-label="Chiudi i servizi">&times;</button>
-      <p class="sp-aiuto" id="servizi-aiuto">Accendi le categorie da vedere sulla mappa.</p>
+      <p class="sp-aiuto" id="servizi-aiuto">Spegni le categorie che non ti servono.</p>
       <div id="servizi-panel-body"></div>
     </div>
 
@@ -1448,6 +2064,7 @@
       <p>Dati: Roma Capitale, geoportale GeoRoma, scaricati a ottobre 2026: deliberazione n. 150/2026 (aree), stradario, Piano dei Servizi, servizi educativi 2025/26, numeri civici. Dati aperti (art. 52, comma 2, del CAD); dove la licenza &egrave; dichiarata &egrave; la <a href="https://creativecommons.org/licenses/by/4.0/deed.it" target="_blank" rel="noopener">CC BY 4.0</a>.</p>
       <p>&copy; OpenStreetMap contributors (<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL</a>): mappa di base, confini dei municipi, posizione di alcuni pronto soccorso e rete pedonale dei 15 minuti. La rete pedonale &egrave; un database derivato da OpenStreetMap, sotto la stessa licenza: il metodo per rifarla &egrave; nel repository del progetto.</p>
       <p>Farmacie: anagrafe del Ministero della Salute (<a href="https://www.dati.gov.it/iodl/2.0/" target="_blank" rel="noopener">IODL 2.0</a>) al 30/10/2026, solo quelle attive, con le posizioni dai numeri civici di Roma Capitale. Ministero dell'Istruzione e del Merito (<a href="https://www.dati.gov.it/iodl/2.0/" target="_blank" rel="noopener">IODL 2.0</a>): anagrafe delle scuole statali e paritarie, a.s. 2026/27. Case della comunit&agrave;: monitoraggio AGENAS al 31/12/2025. Pronto soccorso: elenco della Regione Lazio.</p>
+      <p id="fonte-copertura">Abitanti della prima vista: GHS-POP 2025, Commissione europea, Joint Research Centre (<a href="https://creativecommons.org/licenses/by/4.0/deed.it" target="_blank" rel="noopener">CC BY 4.0</a>), sommati per esagoni di 250 metri.</p>
       <p>Dati rielaborati: geometrie semplificate, accorpamenti, geocodifica.</p>
       <p>Software: Leaflet (<a href="leaflet-LICENSE.txt" target="_blank" rel="noopener">BSD-2</a>); vista 3D, MapLibre GL (<a href="3d/LICENSE-maplibre-gl.txt" target="_blank" rel="noopener">BSD-3</a>); carattere Montserrat (<a href="OFL.txt" target="_blank" rel="noopener">SIL OFL 1.1</a>).</p>
     </div>
@@ -1513,7 +2130,6 @@
   // area, marker del focus, pannello e marker della citta' dei 15 minuti. L'icona e'
   // ICONE_SVG[chiave] (SVG illustrati inlinati dal build). Ordine = ordine dei gruppi.
   // genere: "m"/"f" per "Nessuno/Nessuna", "Il piu' vicino/La piu' vicina".
-  // onDefault: accesa alla prima apertura (scuole, presidi, farmacie, parchi).
   // maiIlPiuVicino: si mostra solo se a portata, mai proposta come la piu' vicina
   // (pronto soccorso specialistici e pediatrici: non sono quelli di quartiere).
   var ICONE_SVG = /*<<ICONE_SERVIZI>>*/;
@@ -1525,24 +2141,24 @@
     { chiave: "quartiere", etichetta: "Vita di quartiere" }
   ];
   var SERVIZI_CATEGORIE = [
-    { chiave: "nido",                          gruppo: "scuole",    genere: "m", etichetta: "Nidi",                          singolare: "Nido",                          onDefault: true },
-    { chiave: "infanzia",                      gruppo: "scuole",    genere: "f", etichetta: "Scuole dell'infanzia",          singolare: "Scuola dell'infanzia",          onDefault: true },
-    { chiave: "primaria",                      gruppo: "scuole",    genere: "f", etichetta: "Scuole primarie",               singolare: "Scuola primaria",               onDefault: true },
-    { chiave: "media",                         gruppo: "scuole",    genere: "f", etichetta: "Scuole medie",                  singolare: "Scuola media",                  onDefault: true },
-    { chiave: "superiore",                     gruppo: "scuole",    genere: "f", etichetta: "Scuole superiori",              singolare: "Scuola superiore",              onDefault: true },
-    { chiave: "casa_comunita",                 gruppo: "salute",    genere: "f", etichetta: "Case della Comunità",           singolare: "Casa della Comunità",           onDefault: true },
-    { chiave: "pronto_soccorso",               gruppo: "salute",    genere: "m", etichetta: "Pronto soccorso",               singolare: "Pronto soccorso",               onDefault: true },
-    { chiave: "pronto_soccorso_specialistico", gruppo: "salute",    genere: "m", etichetta: "Pronto soccorso specialistici", singolare: "Pronto soccorso specialistico", onDefault: true, maiIlPiuVicino: true },
-    { chiave: "pronto_soccorso_pediatrico",    gruppo: "salute",    genere: "m", etichetta: "Pronto soccorso pediatrici",    singolare: "Pronto soccorso pediatrico",    onDefault: true, maiIlPiuVicino: true },
-    { chiave: "farmacie",                      gruppo: "salute",    genere: "f", etichetta: "Farmacie",                      singolare: "Farmacia",                      onDefault: true },
-    { chiave: "sanita",                        gruppo: "salute",    genere: "m", etichetta: "Ambulatori e CUP",              singolare: "Ambulatorio o CUP",             onDefault: false },
-    { chiave: "consultori",                    gruppo: "salute",    genere: "m", etichetta: "Consultori",                    singolare: "Consultorio",                   onDefault: false },
-    { chiave: "parchi_e_aree_gioco",           gruppo: "verde",     genere: "m", etichetta: "Parchi e aree gioco",           singolare: "Parco o area gioco",            onDefault: true },
-    { chiave: "impianti_sportivi",             gruppo: "verde",     genere: "m", etichetta: "Impianti sportivi",             singolare: "Impianto sportivo",             onDefault: false },
-    { chiave: "biblioteche",                   gruppo: "cultura",   genere: "f", etichetta: "Biblioteche",                   singolare: "Biblioteca",                    onDefault: false },
-    { chiave: "musei_e_cultura",               gruppo: "cultura",   genere: "m", etichetta: "Musei e cultura",               singolare: "Museo o luogo di cultura",      onDefault: false },
-    { chiave: "mercati",                       gruppo: "quartiere", genere: "m", etichetta: "Mercati",                       singolare: "Mercato",                       onDefault: false },
-    { chiave: "centri_anziani",                gruppo: "quartiere", genere: "m", etichetta: "Centri anziani",                singolare: "Centro anziani",                onDefault: false }
+    { chiave: "nido",                          gruppo: "scuole",    genere: "m", etichetta: "Nidi",                          singolare: "Nido" },
+    { chiave: "infanzia",                      gruppo: "scuole",    genere: "f", etichetta: "Scuole dell'infanzia",          singolare: "Scuola dell'infanzia" },
+    { chiave: "primaria",                      gruppo: "scuole",    genere: "f", etichetta: "Scuole primarie",               singolare: "Scuola primaria" },
+    { chiave: "media",                         gruppo: "scuole",    genere: "f", etichetta: "Scuole medie",                  singolare: "Scuola media" },
+    { chiave: "superiore",                     gruppo: "scuole",    genere: "f", etichetta: "Scuole superiori",              singolare: "Scuola superiore" },
+    { chiave: "casa_comunita",                 gruppo: "salute",    genere: "f", etichetta: "Case della Comunità",           singolare: "Casa della Comunità" },
+    { chiave: "pronto_soccorso",               gruppo: "salute",    genere: "m", etichetta: "Pronto soccorso",               singolare: "Pronto soccorso" },
+    { chiave: "pronto_soccorso_specialistico", gruppo: "salute",    genere: "m", etichetta: "Pronto soccorso specialistici", singolare: "Pronto soccorso specialistico", maiIlPiuVicino: true },
+    { chiave: "pronto_soccorso_pediatrico",    gruppo: "salute",    genere: "m", etichetta: "Pronto soccorso pediatrici",    singolare: "Pronto soccorso pediatrico", maiIlPiuVicino: true },
+    { chiave: "farmacie",                      gruppo: "salute",    genere: "f", etichetta: "Farmacie",                      singolare: "Farmacia" },
+    { chiave: "sanita",                        gruppo: "salute",    genere: "m", etichetta: "Ambulatori e CUP",              singolare: "Ambulatorio o CUP" },
+    { chiave: "consultori",                    gruppo: "salute",    genere: "m", etichetta: "Consultori",                    singolare: "Consultorio" },
+    { chiave: "parchi_e_aree_gioco",           gruppo: "verde",     genere: "m", etichetta: "Parchi e aree gioco",           singolare: "Parco o area gioco" },
+    { chiave: "impianti_sportivi",             gruppo: "verde",     genere: "m", etichetta: "Impianti sportivi",             singolare: "Impianto sportivo" },
+    { chiave: "biblioteche",                   gruppo: "cultura",   genere: "f", etichetta: "Biblioteche",                   singolare: "Biblioteca" },
+    { chiave: "musei_e_cultura",               gruppo: "cultura",   genere: "m", etichetta: "Musei e cultura",               singolare: "Museo o luogo di cultura" },
+    { chiave: "mercati",                       gruppo: "quartiere", genere: "m", etichetta: "Mercati",                       singolare: "Mercato" },
+    { chiave: "centri_anziani",                gruppo: "quartiere", genere: "m", etichetta: "Centri anziani",                singolare: "Centro anziani" }
   ];
   var SERVIZI_PER_CHIAVE = {};
   SERVIZI_CATEGORIE.forEach(function (c) { SERVIZI_PER_CHIAVE[c.chiave] = c; });
@@ -1553,7 +2169,7 @@
 
   // Palette municipi: rampa OKLCH percettivamente uniforme (amaranto riservato al brand).
   // Il XV chiudeva la rampa quasi identico al I (confinanti sul Tevere): grigio-azzurro.
-  var PALETTE = ["#D7885E", "#C99248", "#B29E44", "#93A955", "#6EB173", "#45B594", "#24B4B4", "#34AECE", "#5CA6DF", "#819BE5", "#A191DE", "#BB88CC", "#CE81B2", "#DA7F93", "#7E9AA6"];
+  var PALETTE = window.MAPPA_PALETTE;   // definita in testa
   var AMARANTO = "#8E001C";
 
   var LABEL_ZOOM = 12, LABEL_ZF_ZOOM = 13, MASK_MAX_ZOOM = 11;
@@ -1694,7 +2310,8 @@
       var entry = { feature: feature, layer: layer, labelLatLng: puntoEtichetta(feature.geometry), li: null };
       entries.push(entry);
       // Col calcolo dei 15 minuti acceso il tocco sposta il punto (lo gestisce map.on("click")).
-      layer.on("click", function () { if (q15.attivo) return; selezionaEntry(entry, false); });
+      // Sopra una zona colorata della prima vista il tocco apre la scheda della zona (copTocco).
+      layer.on("click", function (ev) { if (q15.attivo || copTocco(ev.latlng)) return; selezionaEntry(entry, false); });
       // I poligoni non sono una tappa del Tab: da tastiera si sceglie dall'elenco.
       layer.on("add", function () { var el = layer.getElement && layer.getElement(); if (el) el.setAttribute("tabindex", "-1"); });
       // Col mouse il nome compare al passaggio; sul touch no (il tocco seleziona gia').
@@ -2132,7 +2749,7 @@
       else avviaIngresso(entry.layer, entry.layer.getBounds(), opzioniSelezione());
     } else {
       if (tourAttivo()) { try { map.fitBounds(entry.layer.getBounds(), { padding: [40, 40], maxZoom: 15 }); } catch (e) {} }
-      else avviaIngresso(entry.layer, entry.layer.getBounds(), { padding: [40, 40], maxZoom: 15 });
+      else avviaIngresso(entry.layer, entry.layer.getBounds(), opzioniSelezione());   // accanto alla scheda
     }
     aggiornaEtichette();
     aggiornaReset();
@@ -2612,7 +3229,7 @@
       (civicoTolto ? '<div class="sr-msg">Il numero civico non è usato: apri la via e tocca il tuo tratto sulla mappa.</div>' : "");
     trovate.slice(0, VIE_MAX).forEach(function (v) {
       var nomi = nomiAree(codiciViaOrdinati(v)), b = document.createElement("button");
-      b.type = "button";
+      b.type = "button"; b.setAttribute("data-via", v.nome);
       b.innerHTML = '<span class="sr-nome">' + escapeHtml(v.nome) + '</span><span class="sr-aree">' +
         escapeHtml(nomi.slice(0, 3).join(" · ") + (nomi.length > 3 ? " e altre " + (nomi.length - 3) : "")) + "</span>";
       b.addEventListener("click", function () { mostraVia(v); });
@@ -2661,34 +3278,47 @@
     }
     if (prima) selezionaEntry(prima, true, true);
     viaLayer.clearLayers();
-    var munis = {};
-    v.aree.forEach(function (c) { var e = entryDiCodice(c); if (e) munis[String(e.feature.properties.municipio_num_arabo)] = true; });
-    Promise.all(Object.keys(munis).map(tracciatiMunicipio)).then(function (files) {
-      if (!viaAttiva || viaAttiva.gen !== gen) return;
-      var linee = [];
-      files.forEach(function (f) {
-        v.aree.forEach(function (c) {
-          (f.quartieri[c] || []).forEach(function (r) {
-            if (r[0] !== v.nome) return;
-            r[2].forEach(function (l) { linee.push(l.map(function (p) { return [p[1], p[0]]; })); });
-          });
-        });
-      });
-      if (!linee.length) return;
-      // Via in inchiostro scuro con bordo bianco: si stacca dal confine amaranto dell'area.
-      L.polyline(linee, { pane: "viaPane", color: "#ffffff", weight: 9, opacity: 0.95, lineCap: "round", lineJoin: "round", interactive: false }).addTo(viaLayer);
-      var traccia = L.polyline(linee, { pane: "viaPane", color: "#241B1A", weight: 5, opacity: 1, lineCap: "round", lineJoin: "round", interactive: false }).addTo(viaLayer);
-      viaAttiva.traccia = traccia;
-      // Su desktop la scheda sta in basso a sinistra: la via si inquadra alla sua destra.
-      var sx = Math.min(330, Math.round(map.getSize().x * 0.4));
-      var o = suMobile() ? opzioniSelezione() : { paddingTopLeft: [sx, 50], paddingBottomRight: [60, 50] };
-      o.maxZoom = 16;
-      try { map.fitBounds(traccia.getBounds(), o); } catch (x) {}
+    lineeVia(v).then(function (linee) {
+      if (!viaAttiva || viaAttiva.gen !== gen || !linee.length) return;
+      var traccia = tracciaVia(linee);
+      inquadraVia(traccia);
       if (q15.attivo) { try { q15Piazza(traccia.getCenter(), true); } catch (x) {} }
     }).catch(function () {
       // Senza tracciato si resta sull'area della via, come per una selezione normale.
       if (prima && viaAttiva && viaAttiva.gen === gen) { try { map.fitBounds(prima.layer.getBounds(), opzioniSelezione()); } catch (x) {} }
     });
+  }
+  // Il tracciato intero di una via, [lon, lat] come nei file dei municipi (lo usa anche la 3D).
+  function lineeVia(v) {
+    var munis = {};
+    v.aree.forEach(function (c) { var e = entryDiCodice(c); if (e) munis[String(e.feature.properties.municipio_num_arabo)] = true; });
+    return Promise.all(Object.keys(munis).map(tracciatiMunicipio)).then(function (files) {
+      var linee = [];
+      files.forEach(function (f) {
+        v.aree.forEach(function (c) {
+          (f.quartieri[c] || []).forEach(function (r) {
+            if (r[0] === v.nome) r[2].forEach(function (l) { linee.push(l); });
+          });
+        });
+      });
+      return linee;
+    });
+  }
+  // Via in inchiostro scuro con bordo bianco: si stacca dal confine amaranto dell'area.
+  function tracciaVia(linee) {
+    var ll = linee.map(function (l) { return l.map(function (p) { return [p[1], p[0]]; }); });
+    viaLayer.clearLayers();
+    L.polyline(ll, { pane: "viaPane", color: "#ffffff", weight: 9, opacity: 0.95, lineCap: "round", lineJoin: "round", interactive: false }).addTo(viaLayer);
+    var traccia = L.polyline(ll, { pane: "viaPane", color: "#241B1A", weight: 5, opacity: 1, lineCap: "round", lineJoin: "round", interactive: false }).addTo(viaLayer);
+    viaAttiva.traccia = traccia;
+    return traccia;
+  }
+  // Su desktop la scheda sta in basso a sinistra: la via si inquadra alla sua destra.
+  function inquadraVia(traccia) {
+    var sx = Math.min(330, Math.round(map.getSize().x * 0.4));
+    var o = suMobile() ? opzioniSelezione() : { paddingTopLeft: [sx, 50], paddingBottomRight: [60, 50] };
+    o.maxZoom = 16;
+    try { map.fitBounds(traccia.getBounds(), o); } catch (x) {}
   }
 
   function pulisciVia() {
@@ -2724,7 +3354,7 @@
     if (n > 1) codiciViaOrdinati(v).forEach(function (c) {
       var e = entryDiCodice(c); if (!e) return;
       var b = document.createElement("button");
-      b.type = "button"; b.textContent = e.feature.properties.denominazione;
+      b.type = "button"; b.textContent = e.feature.properties.denominazione; b.setAttribute("data-codice", c);
       if (c === props.codice) { b.className = "on"; b.setAttribute("aria-current", "true"); }
       b.addEventListener("click", function () { selezionaEntry(e, false); });
       wrap.appendChild(b);
@@ -3489,15 +4119,27 @@
     q15.attivo = true;
     document.body.classList.add("q15-on");
     q15Btn.setAttribute("aria-pressed", "true");
+    // Desktop: il pannello Servizi parte chiuso (aperto, coi 15 minuti copriva quasi tutta
+    // la mappa); alla chiusura dei 15 minuti torna com'era.
+    if (!suMobile() && !serviziPanelEl.classList.contains("collapsed")) {
+      q15.serviziRiapri = true;
+      serviziPanelEl.classList.add("collapsed");
+      serviziPanelHead.setAttribute("aria-expanded", "false");
+    }
     q15CaricaBasi().catch(function () {});
     if (!silenzioso) {
       // su telefono la scheda resta scelta ma nascosta (body.q15-on): torna alla chiusura
       q15MostraPannello('<span class="eyebrow">A piedi in 15 minuti</span><h2>Scegli un punto</h2>' +
-        '<p class="q15-msg">Tocca la mappa, cerca una via o usa “Dove sono”: calcolo cosa raggiungi a piedi in circa 15 minuti, sulle strade vere.</p>');
+        '<p class="q15-msg">Tocca la mappa, cerca una via o usa il tasto della tua posizione: calcolo cosa raggiungi a piedi in circa 15 minuti, sulle strade vere.</p>');
     }
   }
   function q15Disattiva() {
     q15.attivo = false; q15.gen++;
+    if (q15.serviziRiapri) {
+      q15.serviziRiapri = false;
+      serviziPanelEl.classList.remove("collapsed");
+      serviziPanelHead.setAttribute("aria-expanded", "true");
+    }
     document.body.classList.remove("q15-on");
     q15Btn.setAttribute("aria-pressed", "false");
     q15Panel.classList.remove("visible", "con-punto");
@@ -3510,7 +4152,12 @@
       if (selectedLayer) statoFinaleSenzaVolo(selectedLayer);
       else if (activeMunicipio && municipioLayers[activeMunicipio]) statoFinaleSenzaVolo(municipioLayers[activeMunicipio]);
     }
-    if (history.replaceState && /^#15=/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search);
+    // l'indirizzo torna quello dell'area (o della via) ancora aperta: Condividi e il
+    // ricarico la ritrovano; senza area, la home
+    if (history.replaceState && /^#15=/.test(location.hash)) {
+      var h15 = selectedEntry ? "#" + (viaAttiva ? "via=" + encodeURIComponent(viaAttiva.via.nome) : encodeURIComponent(selectedEntry.feature.properties.codice || "")) : "";
+      history.replaceState(null, "", h15 && h15 !== "#" ? h15 : location.pathname + location.search);
+    }
   }
   q15Btn.addEventListener("click", function () {
     if (q15.attivo) { q15Disattiva(); return; }
@@ -3589,6 +4236,189 @@
   map.on("click", function (ev) { if (q15.attivo) q15Piazza(ev.latlng, true); });
   registraStrato(50, function () { return q15.attivo && !tourAttivo(); }, function () { q15Disattiva(); });
 
+  // ====================================================================
+  // Prima vista: dove i servizi essenziali NON sono a 15 minuti a piedi.
+  // Esagoni abitati di 250 m (copertura/copertura.json, da prepara_copertura_15_minuti.py)
+  // coi minuti a piedi fino al nido, all'infanzia, alla primaria, alla media, alla farmacia
+  // e al parco piu' vicini: colorato se ne manca almeno uno. La salute (Case della Comunita'
+  // e pronto soccorso) e' nel file ma non colora: e' lontana per tre romani su quattro.
+  // Lo strato c'e' a Roma e nel municipio; si spegne con un'area aperta, coi 15 minuti
+  // accesi e in 3D. Un tocco su una zona colorata apre la sua scheda (copTocco), da cui
+  // partono i 15 minuti dal punto.
+  // ====================================================================
+  var COP_ICONA = { parchi: "parchi_e_aree_gioco" };   // chiave del file -> categoria del registro
+  var COP_CORTO = { nido: "Nido", infanzia: "Infanzia", primaria: "Primaria", media: "Media", farmacie: "Farmacia", parchi: "Parco" };
+  var COP_FUORI = { salute: true };                    // nel file, fuori dal colore
+  var cop = { dati: null, idx: null, ess: [], tot: 0, filtro: "", acceso: true, strato: null, sel: null, ancora: null };
+  var copEl = document.getElementById("copertura"), copStriscia = document.getElementById("cop-striscia");
+  map.createPane("coperturaPane");
+  map.getPane("coperturaPane").style.zIndex = 401;     // sopra le aree, sotto il velo del municipio (402)
+  map.getPane("coperturaPane").style.pointerEvents = "none";
+  var copRenderer = L.canvas({ pane: "coperturaPane", padding: 0.3 });
+
+  function copEsagono(q, r) {
+    var e = cop.dati.esagono, x = e.lato * Math.sqrt(3) * (q + r / 2), y = e.lato * 1.5 * r, out = [];
+    for (var k = 0; k < 6; k++) {
+      var a = Math.PI / 180 * (60 * k - 30);
+      out.push([e.lat0 + (y + e.lato * Math.sin(a)) / e.ky, e.lon0 + (x + e.lato * Math.cos(a)) / e.kx]);
+    }
+    return out;
+  }
+  // Coordinate assiali dell'esagono (a punta in alto) che contiene il punto: come esagono_di nello script.
+  function copQR(ll) {
+    var e = cop.dati.esagono, x = (ll.lng - e.lon0) * e.kx, y = (ll.lat - e.lat0) * e.ky;
+    var qf = (Math.sqrt(3) / 3 * x - y / 3) / e.lato, rf = (2 / 3 * y) / e.lato, sf = -qf - rf;
+    var q = Math.round(qf), r = Math.round(rf), s = Math.round(sf);
+    var dq = Math.abs(q - qf), dr = Math.abs(r - rf), ds = Math.abs(s - sf);
+    if (dq > dr && dq > ds) q = -r - s; else if (dr > ds) r = -q - s;
+    return q + "," + r;
+  }
+  // Minuti della cella i per categoria (indice nel file); le categorie che mancano col filtro.
+  function copMinuti(i, j) { return cop.dati.celle[i * cop.passo + 3 + j]; }
+  function copMancano(i) {
+    var out = [];
+    cop.ess.forEach(function (j) {
+      if ((!cop.filtro || cop.dati.categorie[j] === cop.filtro) && copMinuti(i, j) > cop.dati.soglia) out.push(j);
+    });
+    return out;
+  }
+
+  function copCarica() {
+    if (!VERSIONI.copertura) { document.getElementById("fonte-copertura").hidden = true; return; }
+    fetch(conVersione("copertura/copertura.json", "copertura")).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (d) {
+      cop.dati = d; cop.passo = 3 + d.categorie.length; cop.idx = new Map();
+      d.categorie.forEach(function (k, j) { if (!COP_FUORI[k]) cop.ess.push(j); });
+      for (var i = 0; i * cop.passo < d.celle.length; i++) {
+        cop.idx.set(d.celle[i * cop.passo] + "," + d.celle[i * cop.passo + 1], i);
+        cop.tot += d.celle[i * cop.passo + 2];
+      }
+      var conta = document.getElementById("cop-conta");
+      conta.innerHTML = '<button type="button" data-cat="" aria-pressed="true">Tutti</button>' + cop.ess.map(function (j) {
+        var k = d.categorie[j];
+        return '<button type="button" data-cat="' + k + '" aria-pressed="false">' + escapeHtml(COP_CORTO[k] || k) + "</button>";
+      }).join("");
+      cop.strato = L.polygon([], { renderer: copRenderer, pane: "coperturaPane", stroke: false, fillColor: AMARANTO, fillOpacity: 0.62, interactive: false });
+      copDisegna();
+      copAggiorna();
+    }).catch(function () { cop.dati = null; });
+  }
+
+  function copDisegna() {
+    var anelli = [], ab = 0, n = cop.dati.celle.length / cop.passo;
+    for (var i = 0; i < n; i++) {
+      if (!copMancano(i).length) continue;
+      anelli.push([copEsagono(cop.dati.celle[i * cop.passo], cop.dati.celle[i * cop.passo + 1])]);
+      ab += cop.dati.celle[i * cop.passo + 2];
+    }
+    cop.strato.setLatLngs(anelli);
+    var pct = cop.tot ? Math.round(ab / cop.tot * 100) : 0;
+    var cosa = cop.filtro ? "Senza " + (SERVIZI_SINGOLARI[COP_ICONA[cop.filtro] || cop.filtro] || cop.filtro).toLowerCase() + " entro 15 minuti" :
+      "Manca almeno un servizio essenziale";
+    document.getElementById("cop-quota").innerHTML = escapeHtml(cosa) + ": <b>" + pct + "%</b> dei residenti";
+    document.getElementById("cop-striscia-testo").innerHTML = (cop.filtro ? escapeHtml(cosa) : "Mancano servizi a 15 minuti") + " · <b>" + pct + "%</b>";
+  }
+
+  function copApplicabile() {
+    return !!cop.dati && !q15.attivo && !selectedEntry && !presentazioneOn && !document.body.classList.contains("vista-3d-on");
+  }
+  // Ricalcola cosa si vede: chiamata dagli osservatori su body e scheda (selezione, 15
+  // minuti, 3D) e dai comandi della legenda. Idempotente: tocca le classi solo se cambiano.
+  function copAggiorna() {
+    if (!cop.dati) return;
+    var ok = copApplicabile(), su = ok && cop.acceso, b = document.body;
+    if (su !== map.hasLayer(cop.strato)) { if (su) cop.strato.addTo(map); else map.removeLayer(cop.strato); }
+    if (b.classList.contains("cop-on") !== su) b.classList.toggle("cop-on", su);
+    if (b.classList.contains("cop-mostrata") !== ok) b.classList.toggle("cop-mostrata", ok);
+    copEl.hidden = !ok;
+    copEl.classList.toggle("spento", !cop.acceso);
+    copStriscia.hidden = !su;
+    cartiglioEl.classList.toggle("con-cop", su);
+    if (!su && cop.sel && schedaSrv.aperta) chiudiSchedaServizio();
+  }
+  function copMostra() { cop.acceso = true; copAggiorna(); }
+
+  // Tocco sulla mappa: se cade su una zona colorata apre la sua scheda e ferma la scelta dell'area.
+  function copTocco(ll) {
+    if (!cop.dati || !cop.acceso || !copApplicabile() || tourAttivo()) return false;
+    var i = cop.idx.get(copQR(ll));
+    if (i === undefined || !copMancano(i).length) return false;
+    copApriScheda(i, ll);
+    return true;
+  }
+
+  function copMinutiTesto(m) { return m >= cop.dati.oltre ? "oltre 1 ora" : m + "′"; }
+  function copHtmlScheda(i) {
+    var d = cop.dati, mancano = [], ci = [];
+    cop.ess.forEach(function (j) { (copMinuti(i, j) > d.soglia ? mancano : ci).push(j); });
+    var nome = function (j) { return SERVIZI_SINGOLARI[COP_ICONA[d.categorie[j]] || d.categorie[j]] || d.categorie[j]; };
+    var h = '<div class="ss-testa"><span class="ss-cat">A piedi in 15 minuti</span></div>';
+    h += '<h2 id="scheda-servizio-titolo" tabindex="-1">' + (mancano.length === 1 ? "Manca 1 servizio" : "Mancano " + mancano.length + " servizi") +
+      " su " + cop.ess.length + "</h2>";
+    h += '<ul class="cop-lista">' + mancano.map(function (j) {
+      var k = d.categorie[j];
+      return "<li>" + q15Icona(COP_ICONA[k] || k) + "<span>" + escapeHtml(nome(j)) + "</span><b>" + copMinutiTesto(copMinuti(i, j)) + "</b></li>";
+    }).join("") + "</ul>";
+    if (ci.length) h += '<p class="ss-riga">Entro 15 minuti: ' + escapeHtml(ci.map(function (j) { return nome(j).toLowerCase(); }).join(", ")) + ".</p>";
+    var js = d.categorie.indexOf("salute");
+    if (js >= 0) {
+      var ms = copMinuti(i, js);
+      h += '<p class="ss-riga">Casa della Comunità o pronto soccorso: ' + (ms >= d.oltre ? "oltre un'ora a piedi" : "a " + q15Minuti(ms) + " a piedi") + ".</p>";
+    }
+    var ab = d.celle[i * cop.passo + 2], circa = ab >= 100 ? Math.round(ab / 50) * 50 : ab;
+    h += '<p class="ss-riga ss-det">Circa ' + formattaNumero(circa) + " abitanti in questa zona di 250 metri</p>";
+    h += '<p class="ss-riga">Tempi stimati dal centro abitato della zona.</p>';
+    h += '<div class="ss-azioni">' + (VERSIONI.rete ? '<button type="button" class="ss-q15">' + ICONA_PIEDI + "15 minuti da qui</button>" : "") + "</div>";
+    return h;
+  }
+
+  function copApriScheda(i, ll) {
+    var anello = copEsagono(cop.dati.celle[i * cop.passo], cop.dati.celle[i * cop.passo + 1]);
+    var centro = L.latLng((anello[1][0] + anello[4][0]) / 2, (anello[0][1] + anello[3][1]) / 2);
+    if (schedaSrv.aperta) chiudiSchedaServizio();
+    cop.sel = L.polygon(anello, { renderer: copRenderer, pane: "coperturaPane", color: "#1C2024", weight: 2.5, opacity: 1, fill: false, interactive: false }).addTo(map);
+    cop.ancora = L.marker(centro, { icon: L.divIcon({ className: "cop-ancora", iconSize: [2, 2] }), interactive: false, keyboard: false }).addTo(map);
+    apriSchedaServizio({ categoria: "copertura" }, ll, cop.ancora.getElement(), {
+      html: copHtmlScheda(i),
+      etichetta: "Zona dove mancano servizi a 15 minuti a piedi",
+      quindici: function (p) { avvia15DaPunto(p); },
+      chiusa: function () {
+        if (cop.sel) { map.removeLayer(cop.sel); cop.sel = null; }
+        if (cop.ancora) { map.removeLayer(cop.ancora); cop.ancora = null; }
+      }
+    });
+  }
+
+  document.getElementById("cop-conta").addEventListener("click", function (ev) {
+    var b = ev.target.closest && ev.target.closest("button[data-cat]");
+    if (!b || !cop.dati) return;
+    cop.filtro = b.getAttribute("data-cat");
+    this.querySelectorAll("button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+    if (schedaSrv.aperta && cop.sel) chiudiSchedaServizio();
+    copDisegna();
+  });
+  document.getElementById("cop-nascondi").addEventListener("click", function () {
+    cop.acceso = false; copAggiorna();
+    focalizzaPoi(document.getElementById("cop-mostra"));
+  });
+  document.getElementById("cop-mostra").addEventListener("click", function () {
+    copMostra();
+    focalizzaPoi(document.getElementById("cop-nascondi"));
+  });
+  document.getElementById("cop-come-btn").addEventListener("click", function () {
+    var come = document.getElementById("cop-come"), su = come.hidden;
+    come.hidden = !su;
+    this.setAttribute("aria-expanded", String(su));
+  });
+  copStriscia.addEventListener("click", function () { apriLivelli(); });
+  (function () {
+    var osserva = new MutationObserver(copAggiorna);
+    osserva.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    osserva.observe(document.getElementById("info-panel"), { attributes: true, attributeFilter: ["class"] });
+  })();
+
   // --- Vista d'insieme (inquadratura iniziale, focalizzata su Roma) ---
   function vistaInsieme() {
     try { map.fitBounds(quartieriLayer.getBounds(), { padding: [8, 8] }); } catch (e) {}
@@ -3614,6 +4444,7 @@
     [streetEl, "cerca-risultati", false],
     [drawerToggle, "cartiglio-azioni", true],
     [legendEl, "livelli-municipi", false],
+    [document.getElementById("copertura"), "livelli-copertura", false],
     [document.getElementById("filtro-tipo"), "livelli-tipi", false]
   ].map(function (s) {
     var segno = document.createComment("");
@@ -3643,11 +4474,15 @@
     barraEl.classList.toggle("cerca-aperta", !!si && mqTel.matches && searchEl.value.trim().length > 0);
   }
   // Prime aree il cui nome contiene il testo (prima quelle che cominciano cosi'), fra i tipi
-  // accesi. Solo su telefono: su desktop l'elenco della barra laterale fa gia' da risultato.
+  // accesi e in tutti i municipi. Su telefono sotto la barra, sopra le vie; su desktop in
+  // testa ai risultati per via della barra laterale: l'area cercata e' la prima cosa che si
+  // vede, anche col filtro di un altro municipio (prima finiva in fondo all'elenco, o spariva).
   var CERCA_AREE_MAX = 6;
   function disegnaAreeTrovate() {
     cercaAreeEl.innerHTML = "";
-    if (!mqTel.matches || testoRicerca.length < 2) { segnaRisultatiVuoti(); return; }
+    var tel = mqTel.matches, vecchio = streetEl.querySelector(".sr-blocco-aree");
+    if (vecchio) vecchio.parentNode.removeChild(vecchio);
+    if (testoRicerca.length < 2) { segnaRisultatiVuoti(); return; }
     var q = testoRicerca;
     var trovate = entries.filter(function (e) { return activeTipi[e.feature.properties.tipo] && e.nomeLower.indexOf(q) !== -1; });
     trovate.sort(function (a, b) {
@@ -3655,15 +4490,23 @@
         (a.feature.properties.denominazione || "").localeCompare(b.feature.properties.denominazione || "", "it");
     });
     if (trovate.length) {
-      cercaAreeEl.innerHTML = '<div class="sr-head">Aree' + (trovate.length > CERCA_AREE_MAX ? " · le prime " + CERCA_AREE_MAX + " di " + trovate.length : "") + "</div>";
+      var dove = tel ? cercaAreeEl : document.createElement("div");
+      if (!tel) dove.className = "sr-blocco-aree";
+      dove.innerHTML = '<div class="sr-head">Aree' + (trovate.length > CERCA_AREE_MAX ? " · le prime " + CERCA_AREE_MAX + " di " + trovate.length : "") + "</div>";
       trovate.slice(0, CERCA_AREE_MAX).forEach(function (e) {
         var p = e.feature.properties, b = document.createElement("button");
         b.type = "button"; b.setAttribute("data-codice", p.codice);
         b.innerHTML = '<span class="sr-nome">' + escapeHtml(p.denominazione) + '</span><span class="sr-aree">' +
-          escapeHtml((TIPO_SINGOLARE[p.tipo] || p.tipo) + " · Municipio " + romanoDiQuartiere(p)) + "</span>";
-        b.addEventListener("click", function () { selezionaEntry(e, true); });
-        cercaAreeEl.appendChild(b);
+          escapeHtml("Municipio " + romanoDiQuartiere(p) + " · " + (TIPO_SINGOLARE[p.tipo] || p.tipo)) + "</span>";
+        b.addEventListener("click", function () {
+          // area di un altro municipio: il filtro passa al suo, se no resterebbe nascosta
+          var m = String(p.municipio_num_arabo);
+          if (activeMunicipio && activeMunicipio !== m) { municipioSelect.value = m; activeMunicipio = m; applicaFiltri(); aggiornaRollup(); }
+          selezionaEntry(e, true);
+        });
+        dove.appendChild(b);
       });
+      if (!tel) streetEl.insertBefore(dove, streetEl.firstChild);
     }
     segnaRisultatiVuoti();
   }
@@ -3755,7 +4598,8 @@
       if (tel && !foglio) {
         if (q15su) fondo = q15p.offsetHeight;
         else if (scheda) { fondo = info.offsetHeight; alta = info.classList.contains("scheda-alta"); }
-        else if (getComputedStyle(cartiglioEl).display !== "none") fondo = cartiglioEl.offsetHeight + 26;
+        else if (getComputedStyle(cartiglioEl).display !== "none")
+          fondo = cartiglioEl.offsetHeight + (parseFloat(getComputedStyle(cartiglioEl).bottom) || 26);
       }
       b.classList.toggle("cornice-alta", tel && alta);
       document.getElementById("map-wrap").style.setProperty("--fondo-comandi", Math.round(fondo + 10) + "px");
@@ -3786,6 +4630,12 @@
   applicaFiltri();
   applicaRetinoTutti();
   try { vistaInsieme(); } catch (e) {}
+  // L'intro posa il suo disegno su questo rettangolo (coordinate della finestra).
+  window.MAPPA_INTRO.bersaglio = function (ovest, est, nord, sud) {
+    var c = map.getContainer().getBoundingClientRect();
+    var no = map.latLngToContainerPoint([nord, ovest]), se = map.latLngToContainerPoint([sud, est]);
+    return { left: c.left + no.x, top: c.top + no.y, width: se.x - no.x, height: se.y - no.y };
+  };
   aggiornaMaschera();
   aggiornaViewportInset();
   // Deep-link: se l'URL ha #<codice>, apro quell'area all'avvio (condivisione diretta).
@@ -3811,6 +4661,12 @@
       return;
     }
     if (/^(3d(\/|$)|presentazione$)/.test(h)) return;
+    // #copertura: la prima vista coi suoi esagoni (ci arriva il tasto dei 15 minuti della 3D).
+    if (h === "copertura") {
+      if (!avvio) { if (q15.attivo) q15Disattiva(); if (selectedEntry) deseleziona(); }
+      copMostra();
+      return;
+    }
     if (/^15=/.test(h)) {
       var ll15 = punto15DaHash(h);
       if (avvio) arrivoSu15 = true;
@@ -3849,6 +4705,7 @@
     }
   }
   apriDaHash(leggiHash(), true);
+  copCarica();
   map.whenReady(function () { setTimeout(applicaRetinoTutti, 60); });
 
   // ====================================================================
@@ -3889,6 +4746,12 @@
 
   var COPY = { salta: "Salta il tour", esci: "Esci", inizia: "Inizia la visita",
                avanti: "Avanti", fine: "Esplora la mappa" };
+  var COPY3D = { salta: "Esci", esci: "Esci", inizia: "Avanti", avanti: "Avanti", fine: "Esplora la mappa" };
+
+  // Guida della 3D (la vista d'ingresso): cinque passi, dal municipio ai 15
+  // minuti della 2D. guida3D e' il contratto con la 3D, lo assegna vista-3d/aggancio.js
+  // (inlinato piu' sotto); senza 3D (niente WebGL) resta il tour della 2D qui sotto.
+  var guida3D = null, tour3D = false, viaInScrittura = false;
 
   function menoMoto() { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
   function suMobile() { return window.matchMedia(MQ_TELEFONO).matches; }
@@ -3973,7 +4836,22 @@
     if (suMobile()) {
       return { paddingTopLeft: [30, 70], paddingBottomRight: [30, altezzaScheda()], maxZoom: 15 };
     }
-    return { padding: [40, 40], maxZoom: 15 };
+    // Desktop: la scheda sta a sinistra sopra la mappa e il pannello Servizi in alto a
+    // destra: l'area si inquadra nello spazio libero fra i due (la guida tiene il suo).
+    if (tourAttivo()) return { padding: [40, 40], maxZoom: 15 };
+    // misure di layout (offset), non getBoundingClientRect: la scheda entra con una
+    // transizione e al primo link e' ancora spostata, e il riquadro misurato e' sbagliato
+    var w = map.getSize().x, ip = document.getElementById("info-panel");   // infoPanelEl non c'e' ancora al primo link
+    var destraScheda = ip.offsetWidth ? ip.offsetLeft + ip.offsetWidth : 0;
+    var sx = Math.max(40, Math.min(destraScheda ? destraScheda + 30 : 320, Math.round(w * 0.45)));
+    // a destra la legenda e il pannello Servizi, quando ci sono (aperti o chiusi)
+    var dx = 40;
+    ["legend", "servizi-panel"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && !el.hidden && el.offsetWidth && getComputedStyle(el).display !== "none") dx = Math.max(dx, w - el.offsetLeft + 16);
+    });
+    dx = Math.min(dx, Math.round(w * 0.3));
+    return { paddingTopLeft: [sx, 50], paddingBottomRight: [dx, 40], maxZoom: 15 };
   }
 
   function apriTrastevere(tr) {
@@ -4150,6 +5028,206 @@
     ];
   }
 
+  // ---------- Guida della 3D ----------
+  // Cinque passi: municipio, quartiere, servizi, via, 15 minuti.
+  // Ogni passo fa la cosa (la 3D vola, si apre la scheda di un servizio, la via si scrive da
+  // sola) e porta la mappa al SUO stato, da qualsiasi passo si arrivi: avanti e indietro.
+  // La card sta ferma (posizioneDock) e il buco e' la mappa intera: l'evidenza la da' la 3D.
+  var G3D = { municipio: 5, area: "QU.V.01", via: "Via Fanfulla da Lodi" };   // Pigneto
+
+  function rettDi(el) {
+    var r = el && el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+    return r && (r.width || r.height) ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;
+  }
+  function rettMappa() {
+    var r = rettDi(document.getElementById("map-wrap"));
+    return r ? { left: r.left + TOUR_PAD, top: r.top + TOUR_PAD, width: r.width - 2 * TOUR_PAD, height: r.height - 2 * TOUR_PAD } : null;
+  }
+  // La ricerca con i suoi risultati (barra laterale su desktop, elenco sotto la barra su telefono).
+  function rettRicerca() {
+    var r = rettDi(searchEl);
+    if (!r) return null;
+    [streetEl, cercaAreeEl, cercaRisultatiEl].forEach(function (el) {
+      var x = rettDi(el);
+      if (!x || x.height < 4) return;
+      var dx = Math.max(r.left + r.width, x.left + x.width), dy = Math.max(r.top + r.height, x.top + x.height);
+      r.left = Math.min(r.left, x.left); r.top = Math.min(r.top, x.top);
+      r.width = dx - r.left; r.height = dy - r.top;
+    });
+    return r;
+  }
+
+  // Desktop: nella colonna di sinistra, sotto la ricerca (durante il giro non serve). Telefono:
+  // in alto, sopra barra e ricerca. Mentre la via si scrive la card scende in fondo, cosi'
+  // la ricerca e i suoi risultati restano scoperti.
+  function posizioneDock(s) {
+    var vw = window.innerWidth, vh = window.innerHeight, giu = !!(s.inBasso && s.inBasso());
+    if (suMobile()) {
+      tCard.style.width = "";
+      return { left: (vw - tCard.offsetWidth) / 2, top: giu ? vh - tCard.offsetHeight - BORDO : BORDO };
+    }
+    var sb = rettDi(sidebarEl), cerca = rettDi(searchEl);
+    if (!sb || sb.width < 260 || !cerca) {
+      tCard.style.width = "";
+      return { left: BORDO, top: vh - tCard.offsetHeight - BORDO };
+    }
+    tCard.style.width = Math.round(sb.width - 24) + "px";
+    return { left: sb.left + 12, top: giu ? vh - tCard.offsetHeight - BORDO : cerca.top + cerca.height + 18 };
+  }
+
+  // Telefono: lo spazio che la card in alto toglie alla 3D (dal bordo della mappa), per la
+  // camera (opt.alto della 3D). In basso (via che si scrive) o fuori dalla guida: niente.
+  function spazioGuida3D() {
+    if (!tourOn || !tour3D || !suMobile()) return 0;
+    var s = tourSteps[tourIdx];
+    if (!s || s.posizione !== "dock" || (s.inBasso && s.inBasso())) return 0;
+    var mw = rettDi(document.getElementById("map-wrap"));
+    return mw ? Math.round(BORDO + tCard.offsetHeight + 10 - mw.top) : 0;
+  }
+
+  function svuotaRicerca() {
+    viaInScrittura = false;
+    if (searchEl.value) { searchEl.value = ""; searchEl.dispatchEvent(new Event("input")); }
+    cercaApri(false);
+  }
+
+  // Aspetta che la 3D sia ferma nell'area coi servizi disegnati: la stessa icona nello stesso
+  // posto per due letture di fila (i marker si posano allo zoom d'arrivo, durante il volo).
+  function quandoServizi3D(cb) {
+    var gen = tourGen, t0 = Date.now(), prec = null;
+    (function giro() {
+      if (gen !== tourGen || !tourOn) return;
+      var st = window.Vista3D && window.Vista3D.stato ? window.Vista3D.stato() : null;
+      var el = st && st.pronta && st.livello === "area" ? document.querySelector("#vista-3d .servizio-marker") : null;
+      var r = el ? el.getBoundingClientRect() : null;
+      var fermo = r && prec && Math.abs(r.left - prec.left) < 0.5 && Math.abs(r.top - prec.top) < 0.5;
+      if (fermo || Date.now() - t0 > 8000) { cb(); return; }
+      prec = r;
+      setTimeout(giro, 250);
+    })();
+  }
+  // Un servizio da aprire: un nido (la scheda piu' ricca, coi posti), se no una farmacia, se no
+  // la prima icona singola.
+  function apriServizioGuida() {
+    var box = document.getElementById("vista-3d");
+    if (!box) return;
+    var el = box.querySelector('.servizio-marker[data-categoria="nido"]') ||
+      box.querySelector('.servizio-marker[data-categoria="farmacie"]') || box.querySelector(".servizio-marker");
+    if (el) el.click();
+  }
+
+  // La via si scrive lettera per lettera nella ricerca vera, poi la guida ne tocca il risultato
+  // (che in 3D apre la via sull'area dove passa). Senza focus: su telefono niente tastiera.
+  function scriviVia(nome, gen) {
+    var i = 0, passo = menoMoto() ? 0 : 55;
+    viaInScrittura = true;
+    (function lettera() {
+      if (gen !== tourGen || !tourOn) return;
+      i = passo ? i + 1 : nome.length;
+      searchEl.value = nome.slice(0, i);
+      searchEl.dispatchEvent(new Event("input"));
+      riallineaDifferito();   // il buco segue l'elenco dei risultati che cresce
+      if (i < nome.length) { setTimeout(lettera, passo); return; }
+      setTimeout(function () {
+        if (gen !== tourGen || !tourOn) return;
+        var b = document.querySelector('#street-results button[data-via="' + nome.replace(/"/g, '\\"') + '"]');
+        viaInScrittura = false;
+        if (b) b.click();
+        cercaApri(false);
+        try { searchEl.blur(); } catch (x) {}
+        riallineaDifferito();
+      }, menoMoto() ? 0 : 750);
+    })();
+  }
+
+  // Ultimo passo, in 2D: i 15 minuti a piedi dal centro della via (come "15 min" con la via
+  // aperta), o dal quartiere se la via non c'e'.
+  function avvia15Guida() {
+    if (q15.attivo) return;
+    // telefono: il foglio dei 15 minuti parte basso, sotto la card resta la mappa a piedi
+    if (suMobile()) q15Basso(true);
+    var pig = entryDiCodice(G3D.area);
+    if (selectedEntry && selectedEntry === pig) { avvia15DaScheda(); return; }
+    var centro = null;
+    try { centro = viaAttiva && viaAttiva.traccia ? viaAttiva.traccia.getCenter() : null; } catch (x) {}
+    if (!centro && pig) { try { centro = pig.layer.getBounds().getCenter(); } catch (x) {} }
+    if (centro) avvia15DaPunto(centro);
+  }
+
+  function costruisciStep3D() {
+    var tel = suMobile(), tocca = tel ? "Tocca" : "Clicca", toccala = tel ? "toccala" : "cliccala";
+    var area = { tipo: "area", codice: G3D.area };
+    function inArea() { svuotaRicerca(); pulisciVia(); guida3D.vola(area); }
+    return [
+      {
+        id: "municipio", posizione: "dock", target: rettMappa,
+        titolo: "Visita il tuo municipio",
+        testo: "Roma ha " + municipiOrdinati.length + " municipi. Questo è il Municipio V: il numero accanto a ogni quartiere conta i suoi servizi.",
+        prima: function () {
+          chiudiSchedaServizio(); svuotaRicerca(); pulisciVia();
+          guida3D.vola({ tipo: "municipio", arabo: G3D.municipio });
+          return false;
+        }
+      },
+      {
+        id: "quartiere", posizione: "dock", target: rettMappa,
+        titolo: "Trova il tuo quartiere",
+        testo: "Ecco Pigneto, nel Municipio V. " + tocca + " un'area per aprirne la scheda: tipo, funzione e superficie.",
+        prima: function () { chiudiSchedaServizio(); inArea(); return false; }
+      },
+      {
+        id: "servizi", posizione: "dock", target: rettMappa,
+        titolo: "Scopri i servizi",
+        testo: "Ogni icona sulla mappa è un servizio: scuole, farmacie, parchi, mercati. " +
+          (tel ? "Toccala per aprirne la scheda." : "Cliccala per aprirne la scheda; nel pannello Servizi scegli quali vedere."),
+        prima: function () {
+          inArea();
+          if (schedaSrv.aperta) return false;
+          var gen = tourGen;
+          quandoServizi3D(function () {
+            if (gen !== tourGen || !tourOn || schedaSrv.aperta) return;
+            apriServizioGuida();
+            if (!tel && serviziPanelEl && !serviziPanelEl.hidden) pulsa(serviziPanelEl);
+          });
+          return false;
+        }
+      },
+      {
+        id: "via", posizione: "dock",
+        target: function () { return viaInScrittura ? rettRicerca() : rettMappa(); },
+        inBasso: function () { return viaInScrittura; },
+        titolo: "Cerca la tua via",
+        testo: "Scrivi il nome di una via: la mappa ti porta nell'area dove passa e la disegna. " + G3D.via + " passa solo da Pigneto.",
+        prima: function () {
+          chiudiSchedaServizio();
+          // gia' aperta (si torna dai 15 minuti): basta riportarci la 3D
+          if (viaAttiva && viaAttiva.via.nome === G3D.via) { guida3D.vola(area); return false; }
+          svuotaRicerca();
+          guida3D.vola(area);
+          var gen = tourGen;
+          viaInScrittura = true;
+          // lo stradario si scarica alla prima ricerca: la via si scrive quando c'e'
+          Promise.resolve(caricaVie()).then(function () {
+            if (gen !== tourGen || !tourOn) return;
+            setTimeout(function () { scriviVia(G3D.via, gen); }, menoMoto() ? 0 : 450);
+          }).catch(function () { viaInScrittura = false; riallineaDifferito(); });
+          return false;
+        }
+      },
+      {
+        id: "quindici", posizione: "dock", target: rettMappa,
+        titolo: "A piedi in 15 minuti",
+        testo: "In 2D vedi fin dove arrivi a piedi in 15 minuti da " + G3D.via + ", e quali servizi trovi. Il tasto 3D torna alla vista di prima.",
+        prima: function () {
+          chiudiSchedaServizio(); svuotaRicerca();
+          if (guida3D.aperta()) guida3D.torna2D(function () { avvia15Guida(); riallineaDifferito(); });
+          else avvia15Guida();
+          return false;
+        }
+      }
+    ];
+  }
+
   // Il primo fra moveend e il timeout posiziona; l'altro viene disarmato.
   // Il timeout non e' una rete di sicurezza opzionale: fitBounds NON emette moveend
   // quando la vista richiesta e' gia' quella corrente (passi 1 e 7, entrambi vista d'insieme).
@@ -4262,16 +5340,21 @@
     tProg.style.width = Math.round(((tourIdx + 1) / tourSteps.length) * 100) + "%";
     tDonor.hidden = !s.donatore;
     tCard.classList.toggle("centro", s.posizione === "centro");
+    tCard.classList.toggle("dock", s.posizione === "dock");
+    if (s.posizione !== "dock") tCard.style.width = "";
+    var copia = tour3D ? COPY3D : COPY;
     tBack.hidden = tourIdx === 0;
-    tSkip.textContent = tourIdx === 0 ? COPY.salta : COPY.esci;
-    tNext.textContent = tourIdx === tourSteps.length - 1 ? COPY.fine : (tourIdx === 0 ? COPY.inizia : COPY.avanti);
+    tSkip.textContent = tourIdx === 0 ? copia.salta : copia.esci;
+    // nella guida della 3D l'ultimo tasto chiude gia' (e resta su una riga, anche sul telefono)
+    tSkip.hidden = tour3D && tourIdx === tourSteps.length - 1;
+    tNext.textContent = tourIdx === tourSteps.length - 1 ? copia.fine : (tourIdx === 0 ? copia.inizia : copia.avanti);
   }
 
   function riallinea() {
     if (!tourOn) return;
     var s = tourSteps[tourIdx];
     var rect = misuraStep(s);
-    var pos = calcolaCard(rect, s.posizione);
+    var pos = s.posizione === "dock" ? posizioneDock(s) : calcolaCard(rect, s.posizione);
     if (rect && pos.ripiego) rect = ritagliaPerCard(rect, pos);
     disegnaSpotlight(rect);
     tCard.style.left = Math.round(pos.left) + "px";
@@ -4315,7 +5398,8 @@
     rimuoviIngresso(); // il tour resta identico a oggi: niente buio/velatura durante il percorso
     tourFocusPrec = document.activeElement;
     tourOn = true;
-    tourSteps = suMobile() ? costruisciStepTelefono() : costruisciStep(false);
+    tour3D = !!(guida3D && guida3D.disponibile());
+    tourSteps = tour3D ? costruisciStep3D() : (suMobile() ? costruisciStepTelefono() : costruisciStep(false));
     tourIdx = -1;
     document.body.classList.add("tour-on");
     window.addEventListener("resize", riallineaDifferito);
@@ -4335,10 +5419,15 @@
     tHole.style.opacity = "0";
     tHole.style.width = tHole.style.height = "0px";
     tVeil.classList.remove("dim");
+    tCard.classList.remove("dock"); tCard.style.width = "";
     window.removeEventListener("resize", riallineaDifferito);
     if (tourRaf) { cancelAnimationFrame(tourRaf); tourRaf = 0; }
     segnaTourVisto();
-    ripristinaMappa();
+    // la guida della 3D lascia la mappa dov'e' (alla fine: la 2D dei 15 minuti); una via
+    // lasciata a meta' non resta scritta nella ricerca
+    if (tour3D) { if (viaInScrittura) svuotaRicerca(); }
+    else ripristinaMappa();
+    tour3D = false;
     var dest = (tourFocusPrec && tourFocusPrec !== document.body && tourFocusPrec.focus) ? tourFocusPrec : tourBtn;
     try { dest.focus(); } catch (x) {}
   }
@@ -4368,7 +5457,8 @@
   // esistente chiuderebbe about panel, drawer e selezione).
   document.addEventListener("keydown", function (e) {
     if (!tourOn) return;
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); chiudiTour(); return; }
+    // stopImmediatePropagation: l'Esc della 3D (aggancio.js, stesso documento) tornerebbe in 2D
+    if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); chiudiTour(); return; }
     // Al passo 5 la ricerca e' dentro il buco, quindi davvero usabile: le frecce del
     // tour non devono rubare il cursore a chi sta scrivendo.
     var t = e.target;
@@ -4383,10 +5473,15 @@
   (function () {
     var arrivatoConDeepLink = !!selectedEntry || arrivoSuVia || arrivoSu15 || presentazioneAttivaDaHash() || /^#3d(\/|$)/.test(location.hash);
     map.whenReady(function () {
-      setTimeout(function () {
-        if (arrivatoConDeepLink || tourVisto() || presentazioneAttivaDaHash()) return;
-        avviaTour();
-      }, 620);
+      window.MAPPA_INTRO.poi(function () {   // la guida aspetta la fine dell'intro
+        setTimeout(function () {
+          // da sola parte solo la guida della 2D (senza 3D): quella della 3D si apre dal tasto,
+          // e chi e' in 2D (?vista=2d) non va portato in 3D
+          if (arrivatoConDeepLink || tourVisto() || presentazioneAttivaDaHash() || document.body.classList.contains("vista-3d-on")) return;
+          if (guida3D && guida3D.disponibile()) return;
+          avviaTour();
+        }, 620);
+      });
     });
   })();
 
@@ -4410,9 +5505,9 @@
   var serviziAttive = {};
   var schedaSrv = { aperta: false, props: null, ll: null, ancora: null, opz: null, prec: null };   // scheda del servizio, piu' sotto
   SERVIZI_CATEGORIE.forEach(function (c) {
-    // Su telefono partono tutte spente: le icone
-    // compaiono solo per le categorie accese dal foglio Servizi.
-    SERVIZI_ETICHETTE[c.chiave] = c.etichetta; SERVIZI_SINGOLARI[c.chiave] = c.singolare; serviziAttive[c.chiave] = suMobile() ? false : c.onDefault;
+    // Partono tutte accese, anche su telefono: si vedono tutti
+    // i servizi dell'area e ognuno spegne quelli che non gli servono.
+    SERVIZI_ETICHETTE[c.chiave] = c.etichetta; SERVIZI_SINGOLARI[c.chiave] = c.singolare; serviziAttive[c.chiave] = true;
   });
   // "3 farmacie", "1 farmacia": minuscola solo l'iniziale (sigle e nomi propri restano).
   function contaServizio(n, chiave) {
@@ -4508,20 +5603,16 @@
   // del focus (icone, cluster, caselle). conteEntro: per categoria, quanti entro 15
   // minuti (il numero accanto alla casella). lista null = si esce dalla modalita'.
   var serviziConteQuindici = null;
-  // Telefono: nella scheda dell'area i servizi partono spenti, nei 15 minuti tutti accesi:
-  // il foglio serve solo a spegnere quelli che non servono. Uscendo si torna alle categorie che c'erano nella scheda. Desktop invariato.
+  // Telefono: nei 15 minuti i servizi ripartono tutti accesi, anche quelli spenti nella
+  // scheda; uscendo si torna alle categorie che c'erano nella scheda. Desktop invariato.
   var serviziAttivePrimaQuindici = null;
-  var SERVIZI_AIUTO_SCHEDA = "Accendi le categorie da vedere sulla mappa.",
-      SERVIZI_AIUTO_QUINDICI = "Spegni le categorie che non ti servono.";
   function mostraServiziQuindici(lista, conteEntro) {
     if (lista && !serviziAttivePrimaQuindici && suMobile()) {
       serviziAttivePrimaQuindici = {};
       Object.keys(serviziAttive).forEach(function (k) { serviziAttivePrimaQuindici[k] = serviziAttive[k]; serviziAttive[k] = true; });
-      document.getElementById("servizi-aiuto").textContent = SERVIZI_AIUTO_QUINDICI;
     } else if (!lista && serviziAttivePrimaQuindici) {
       Object.keys(serviziAttivePrimaQuindici).forEach(function (k) { serviziAttive[k] = serviziAttivePrimaQuindici[k]; });
       serviziAttivePrimaQuindici = null;
-      document.getElementById("servizi-aiuto").textContent = SERVIZI_AIUTO_SCHEDA;
     }
     serviziConteQuindici = lista ? (conteEntro || {}) : null;
     serviziFocusCorrenti = lista || [];
@@ -4701,7 +5792,7 @@
     var chiavi = Object.keys(conte).filter(function (k) { return conte[k] > 0 && SERVIZI_ETICHETTE[k]; })
       .sort(function (a, b) { return conte[b] - conte[a]; });
     if (!chiavi.length) { wrap.hidden = true; return; }
-    riga.innerHTML = chiavi.map(function (k) { return contaServizio(conte[k], k); }).join(" · ");
+    riga.innerHTML = chiavi.map(function (k) { return '<span class="is-voce">' + contaServizio(conte[k], k) + "</span>"; }).join(" · ");
     // Telefono: la stessa conta come griglia di icone e numeri (scheda tirata su) e il
     // totale sull'azione "Servizi".
     var totale = 0;
@@ -4876,12 +5967,13 @@
 
   function apriSchedaServizio(props, latlng, ancora, opz) {
     var s = schedaSrv, el = schedaSrvEl;
-    if (!props || tourAttivo()) return;
+    if (!props || (tourAttivo() && !tour3D)) return;   // la guida della 3D ne apre una lei
     if (s.aperta) spegniAncoraScheda();
     else s.prec = el.contains(document.activeElement) ? null : document.activeElement;
     s.props = props; s.ll = latlng; s.ancora = ancora || null; s.opz = opz || null; s.aperta = true;
-    schedaSrvCorpo.innerHTML = htmlSchedaServizio(props);
-    el.setAttribute("aria-label", (SERVIZI_SINGOLARI[props.categoria] || props.categoria) + ": " + nomeServizio(props));
+    // opz.html: una scheda che non e' di un servizio (la zona della prima vista), col suo titolo
+    schedaSrvCorpo.innerHTML = s.opz && s.opz.html ? s.opz.html : htmlSchedaServizio(props);
+    el.setAttribute("aria-label", s.opz && s.opz.etichetta ? s.opz.etichetta : (SERVIZI_SINGOLARI[props.categoria] || props.categoria) + ": " + nomeServizio(props));
     el.setAttribute("aria-hidden", "false");
     if (ancora) accendiAncoraScheda(ancora);
     if (suMobile()) {
@@ -4896,13 +5988,13 @@
     posizionaSchedaServizio();
     if (!s.aperta) return;
     // telefono, 2D: l'icona scelta non deve restare sotto il foglio
-    if (suMobile() && !s.opz && s.ancora) {
+    if (suMobile() && (!s.opz || s.opz.html) && s.ancora) {
       var mw = document.getElementById("map-wrap").getBoundingClientRect(), r = s.ancora.getBoundingClientRect();
       var limite = mw.bottom - el.offsetHeight - 14, giu = r.bottom - limite;
       if (giu > 0) map.panBy([0, Math.round(Math.min(giu, mw.height * 0.5))], { animate: !menoMoto() });
     }
     var titolo = document.getElementById("scheda-servizio-titolo");
-    if (titolo) { try { titolo.focus({ preventScroll: true }); } catch (e) {} }
+    if (titolo && !tourAttivo()) { try { titolo.focus({ preventScroll: true }); } catch (e) {} }
   }
   function chiudiSchedaServizio() {
     var s = schedaSrv, el = schedaSrvEl;
@@ -4915,8 +6007,9 @@
       document.getElementById("info-panel").classList.remove("ceduta");
       q15Panel.classList.remove("ceduto");
     }
-    var prec = s.prec;
+    var prec = s.prec, chiusa = s.opz && s.opz.chiusa;
     s.props = s.ll = s.ancora = s.opz = s.prec = null;
+    if (chiusa) chiusa();
     if (prec && prec.isConnected && prec !== document.body && prec.focus) { try { prec.focus({ preventScroll: true }); } catch (e) {} }
   }
   document.getElementById("scheda-servizio-chiudi").addEventListener("click", chiudiSchedaServizio);
@@ -5229,8 +6322,7 @@
   // ======================================================================
 
   // === Modalità presentazione ==========================================
-  // Loop automatico per lo schermo d'ingresso dell'Hub, le demo al Comune e
-  // la registrazione video: niente pannelli, solo mappa, header e una
+  // Loop automatico per uno schermo o una demo: niente pannelli, solo mappa, header e una
   // didascalia. Si attiva con l'URL #presentazione (anche al caricamento),
   // si esce con Esc, un click/tocco o il tasto indietro del browser.
   // Riusa l'ingresso cinematografico esistente (avviaIngresso/rimuoviIngresso/
