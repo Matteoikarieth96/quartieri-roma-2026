@@ -2,6 +2,8 @@
 dist/
 # Rete pedonale da OSM (~19 MB): si rifa' con prepara_rete_pedonale.py
 data/rete/
+# Rete per la bici (~19 MB): si rifa' con prepara_rete_bici.py
+data/rete-bici/
 # Estratti OSM e indirizzi grezzi: input dei prepara_*.py, non si versionano
 *.pbf
 civici_*.csv

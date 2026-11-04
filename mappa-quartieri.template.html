@@ -332,6 +332,8 @@
   #legend.collapsed .leg-types { display: none; }
   #legend .leg-types .lt { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
   #legend .leg-types .lt-mark { width: 13px; height: 11px; border-radius: 2px; flex: 0 0 auto; border: 1px solid oklch(0.7 0.02 30); }
+  #legend .leg-types label.lt { cursor: pointer; }
+  #legend .leg-types .lt-mark.lt-bici, .q15-piste .lt-bici { width: 14px; height: 0; border: 0; border-top: 3px solid #1E7A45; border-radius: 2px; flex: 0 0 auto; }
 
   /* ---------- Area info card (floating) ---------- */
   #info-panel {
@@ -1046,6 +1048,13 @@
   .q15-prev .q15-min { color: var(--muted); }
   .q15-manca { margin: 7px 0 0; font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
   .q15-fonti { margin: 13px 0 0; font-size: 10.5px; color: var(--faint); line-height: 1.45; }
+  /* A piedi | In bici: due tasti a pillola in testa al pannello dei 15 minuti */
+  .q15-modo { display: inline-flex; margin: 2px 0 8px; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--bg-sink); }
+  .q15-modo button { font: inherit; font-size: 12px; font-weight: 600; border: 0; background: none; color: var(--muted); padding: 5px 13px; border-radius: 999px; cursor: pointer; }
+  .q15-modo button[aria-pressed="true"] { background: var(--panel); color: var(--amaranto); box-shadow: var(--shadow-sm); }
+  .q15-modo button:focus-visible { outline: 2px solid var(--amaranto); outline-offset: 1px; }
+  .q15-piste { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .q15-piste input, #legend .leg-types .lt input { margin: 0; accent-color: #1E7A45; }
   /* Icona illustrata del registro (la stessa dei marker), in piccolo. */
   .q15-ico { display: inline-flex; width: 22px; height: 22px; flex: 0 0 auto; }
   .q15-ico svg { width: 100%; height: 100%; display: block; }
@@ -2022,6 +2031,7 @@
       <div class="leg-types">
         <div class="lt"><span class="lt-mark" id="lt-solid"></span>Quartieri e rioni</div>
         <div class="lt"><span class="lt-mark" id="lt-hatch"></span>Zone funzionali</div>
+        <label class="lt" id="lt-ciclabili" hidden><input type="checkbox" id="chk-ciclabili"><span class="lt-mark lt-bici" aria-hidden="true"></span>Piste ciclabili</label>
       </div>
     </div>
 
@@ -2081,8 +2091,8 @@
     <button id="q15-toggle" type="button" aria-pressed="false" aria-controls="q15-panel">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="13" cy="4" r="2"/><path d="M10 22l2-6 3 3v3"/><path d="M8 12l2-4 4 1 2 4 3 1"/><path d="M10 8l-1 7"/>
-      </svg>A piedi in 15 minuti</button>
-    <div id="q15-panel" role="region" aria-label="Cosa raggiungi a piedi in 15 minuti">
+      </svg><span id="q15-toggle-testo">A piedi in 15 minuti</span></button>
+    <div id="q15-panel" role="region" aria-label="Cosa raggiungi in 15 minuti">
       <button id="q15-close" type="button" aria-label="Chiudi">&times;</button>
       <button type="button" class="foglio-maniglia" id="q15-maniglia" aria-controls="q15-panel" aria-expanded="true" aria-label="Abbassa il pannello dei 15 minuti"></button>
       <p id="q15-annuncio" class="solo-lettori" aria-live="polite"></p>
@@ -2119,7 +2129,7 @@
     <div class="ab-fonti">
       <div class="ab-fonti-t">Fonti</div>
       <p>Dati: Roma Capitale, geoportale GeoRoma, scaricati a ottobre 2026: deliberazione n. 150/2026 (aree), stradario, Piano dei Servizi, servizi educativi 2025/26, numeri civici. Dati aperti (art. 52, comma 2, del CAD); dove la licenza &egrave; dichiarata &egrave; la <a href="https://creativecommons.org/licenses/by/4.0/deed.it" target="_blank" rel="noopener">CC BY 4.0</a>.</p>
-      <p>&copy; OpenStreetMap contributors (<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL</a>): mappa di base, confini dei municipi, posizione di alcuni pronto soccorso e rete pedonale dei 15 minuti. La rete pedonale &egrave; un database derivato da OpenStreetMap, sotto la stessa licenza: il metodo per rifarla &egrave; nel repository del progetto.</p>
+      <p>&copy; OpenStreetMap contributors (<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL</a>): mappa di base, confini dei municipi, posizione di alcuni pronto soccorso, stazioni della metro, fermate del tram, stazioni dei treni, piste ciclabili e reti dei 15 minuti a piedi e in bici. Le reti sono database derivati da OpenStreetMap, sotto la stessa licenza: il metodo per rifarle &egrave; nel repository del progetto.</p>
       <p>Farmacie: anagrafe del Ministero della Salute (<a href="https://www.dati.gov.it/iodl/2.0/" target="_blank" rel="noopener">IODL 2.0</a>) al 30/10/2026, solo quelle attive, con le posizioni dai numeri civici di Roma Capitale. Ministero dell'Istruzione e del Merito (<a href="https://www.dati.gov.it/iodl/2.0/" target="_blank" rel="noopener">IODL 2.0</a>): anagrafe delle scuole statali e paritarie, a.s. 2026/27. Case della comunit&agrave;: monitoraggio AGENAS al 31/12/2025. Pronto soccorso: elenco della Regione Lazio.</p>
       <p id="fonte-copertura">Abitanti della prima vista: GHS-POP 2025, Commissione europea, Joint Research Centre (<a href="https://creativecommons.org/licenses/by/4.0/deed.it" target="_blank" rel="noopener">CC BY 4.0</a>), sommati per esagoni di 250 metri.</p>
       <p>Dati rielaborati: geometrie semplificate, accorpamenti, geocodifica.</p>
@@ -2195,7 +2205,8 @@
     { chiave: "salute",    etichetta: "Salute" },
     { chiave: "verde",     etichetta: "Verde e sport" },
     { chiave: "cultura",   etichetta: "Cultura" },
-    { chiave: "quartiere", etichetta: "Vita di quartiere" }
+    { chiave: "quartiere", etichetta: "Vita di quartiere" },
+    { chiave: "trasporti", etichetta: "Trasporti" }
   ];
   var SERVIZI_CATEGORIE = [
     { chiave: "nido",                          gruppo: "scuole",    genere: "m", etichetta: "Nidi",                          singolare: "Nido" },
@@ -2215,7 +2226,10 @@
     { chiave: "biblioteche",                   gruppo: "cultura",   genere: "f", etichetta: "Biblioteche",                   singolare: "Biblioteca" },
     { chiave: "musei_e_cultura",               gruppo: "cultura",   genere: "m", etichetta: "Musei e cultura",               singolare: "Museo o luogo di cultura" },
     { chiave: "mercati",                       gruppo: "quartiere", genere: "m", etichetta: "Mercati",                       singolare: "Mercato" },
-    { chiave: "centri_anziani",                gruppo: "quartiere", genere: "m", etichetta: "Centri anziani",                singolare: "Centro anziani" }
+    { chiave: "centri_anziani",                gruppo: "quartiere", genere: "m", etichetta: "Centri anziani",                singolare: "Centro anziani" },
+    { chiave: "metro",                         gruppo: "trasporti", genere: "f", etichetta: "Stazioni della metro",          singolare: "Stazione della metro" },
+    { chiave: "tram",                          gruppo: "trasporti", genere: "f", etichetta: "Fermate del tram",              singolare: "Fermata del tram" },
+    { chiave: "treno",                         gruppo: "trasporti", genere: "f", etichetta: "Stazioni dei treni",            singolare: "Stazione dei treni" }
   ];
   var SERVIZI_PER_CHIAVE = {};
   SERVIZI_CATEGORIE.forEach(function (c) { SERVIZI_PER_CHIAVE[c.chiave] = c; });
@@ -3824,17 +3838,32 @@
   new DoveSono().addTo(map);
 
   // ====================================================================
-  // Citta' dei 15 minuti: cosa si raggiunge a piedi da un punto.
+  // Citta' dei 15 minuti: cosa si raggiunge a piedi o in bici da un punto.
   // Rete pedonale da OpenStreetMap in riquadri (rete/r<riga>_<colonna>.json, da
-  // prepara_rete_pedonale.py), caricati solo attorno al punto; servizi dallo stesso
+  // prepara_rete_pedonale.py) e rete per la bici negli stessi riquadri (rete-bici/, da
+  // prepara_rete_bici.py), caricati solo attorno al punto; servizi dallo stesso
   // servizi/servizi.json del focus (caricaServizi), tutte le categorie del registro.
   // Il calcolo gira nel browser, sulle strade vere: il punto si aggancia alla strada
-  // piu' vicina e da li' si cammina.
+  // piu' vicina e da li' si cammina (o si pedala).
+  // In bici la rete porta metri "equivalenti" a 15 km/h (i sampietrini costano di piu',
+  // una pista meno) e, sui sensi unici, il costo del ritorno: contromano si va a piedi.
   // ====================================================================
-  var Q15_VEL = 80;                 // metri al minuto, 4,8 km/h
-  var Q15_MIN = 15, Q15_MAX = 25;   // la soglia; oltre si cerca il piu' vicino fino a 25 minuti
+  var Q15_MIN = 15;                 // la soglia; oltre si cerca il piu' vicino fino a max minuti
   var Q15_RIGHE = 3;                // per tipo, le piu' vicine; le altre si contano
-  var q15 = { attivo: false, basi: null, indice: null, servizi: [], riquadri: {}, gen: 0, marker: null, zoomFatto: false };
+  // vel: metri (equivalenti) al minuto; aria: quanto un metro in linea d'aria puo' costare
+  // al minimo (in bici una pista a 16 km/h costa meno di un metro a 15).
+  var Q15_MODI = {
+    piedi: { vel: 80, max: 25, aria: 1, cartella: "rete", versione: "rete", come: "a piedi", titolo: "A piedi in 15 minuti",
+             fonti: "Percorsi a piedi sulla rete di OpenStreetMap, a 4,8 km/h, tempi indicativi." },
+    bici: { vel: 250, max: 20, aria: 15 / 16, cartella: "rete-bici", versione: "bici", come: "in bici", titolo: "In bici in 15 minuti",
+            fonti: "Percorsi in bici sulla rete di OpenStreetMap: circa 15 km/h su strade e piste, meno sui sampietrini e sugli sterrati; contromano e nelle aree pedonali a piedi, bici a mano. Le salite non sono contate: tempi indicativi." }
+  };
+  var q15 = { attivo: false, basi: null, modo: "piedi", reti: {}, servizi: [], gen: 0, marker: null, zoomFatto: false };
+  function q15M() { return Q15_MODI[q15.modo] || Q15_MODI.piedi; }
+  function q15Rete(modo) {
+    var m = modo || q15.modo;
+    return q15.reti[m] || (q15.reti[m] = { carica: null, indice: null, presenti: null, riquadri: {} });
+  }
   var q15Btn = document.getElementById("q15-toggle"), q15Panel = document.getElementById("q15-panel"), q15Body = document.getElementById("q15-body");
   map.createPane("q15Pane");
   map.getPane("q15Pane").style.zIndex = 430;   // sotto i servizi del focus (440)
@@ -3851,12 +3880,18 @@
   }
 
   function q15CaricaBasi() {
+    var R = q15Rete(), M = q15M();
+    if (!R.carica) {
+      R.carica = q15Json(conVersione(M.cartella + "/indice.json", M.versione)).then(function (ind) {
+        R.indice = ind;
+        R.presenti = {};
+        ind.riquadri.forEach(function (k) { R.presenti[k] = true; });
+        return R;
+      }).catch(function (e) { R.carica = null; throw e; });
+    }
     if (!q15.basi) {
-      q15.basi = Promise.all([q15Json(conVersione("rete/indice.json", "rete")), caricaServizi()]).then(function (r) {
-        if (!r[1]) throw new Error("servizi non disponibili");
-        q15.indice = r[0];
-        q15.presenti = {};
-        r[0].riquadri.forEach(function (k) { q15.presenti[k] = true; });
+      q15.basi = caricaServizi().then(function (ok) {
+        if (!ok) throw new Error("servizi non disponibili");
         // Stessi punti del focus: t = categoria del registro, s = stato (attiva/prevista).
         q15.servizi = serviziDati.filter(function (p) { return SERVIZI_PER_CHIAVE[p.props.categoria]; }).map(function (p) {
           return { t: p.props.categoria, n: p.props.nome, i: p.props.indirizzo, d: p.props.dettaglio,
@@ -3864,13 +3899,14 @@
         });
       }).catch(function (e) { q15.basi = null; throw e; });
     }
-    return q15.basi;
+    return Promise.all([q15.basi, R.carica]).then(function (r) { return r[1]; });
   }
 
   // Un riquadro: archi fra incroci con il tracciato decodificato (interi da 1e-5 gradi, delta).
-  function q15Riquadro(k) {
-    if (!q15.riquadri[k]) {
-      q15.riquadri[k] = q15Json(conVersione("rete/r" + k + ".json", "rete")).then(function (d) {
+  // ba: il costo da b ad a (in bici, sui sensi unici, diverso da len); a piedi e' len.
+  function q15Riquadro(R, M, k) {
+    if (!R.riquadri[k]) {
+      R.riquadri[k] = q15Json(conVersione(M.cartella + "/r" + k + ".json", M.versione)).then(function (d) {
         return d.e.map(function (r) {
           var f = r[3], la = f[0], lo = f[1], pts = [[la / 1e5, lo / 1e5]];
           var s = la, w = lo, n = la, e = lo;
@@ -3878,19 +3914,19 @@
             la += f[i]; lo += f[i + 1]; pts.push([la / 1e5, lo / 1e5]);
             if (la < s) s = la; if (la > n) n = la; if (lo < w) w = lo; if (lo > e) e = lo;
           }
-          return { a: r[0], b: r[1], len: r[2], pts: pts, box: [s / 1e5, w / 1e5, n / 1e5, e / 1e5] };
+          return { a: r[0], b: r[1], len: r[2], ba: r.length > 4 ? r[4] : r[2], pts: pts, box: [s / 1e5, w / 1e5, n / 1e5, e / 1e5] };
         });
-      }).catch(function (e) { delete q15.riquadri[k]; throw e; });
+      }).catch(function (e) { delete R.riquadri[k]; throw e; });
     }
-    return q15.riquadri[k];
+    return R.riquadri[k];
   }
-  function q15RiquadriAttorno(lat, lon, raggio) {
-    var pl = q15.indice.passo_lat, po = q15.indice.passo_lon;
+  function q15RiquadriAttorno(R, lat, lon, raggio) {
+    var pl = R.indice.passo_lat, po = R.indice.passo_lon;
     var dLat = raggio / 110540, dLon = raggio / (111320 * Math.cos(lat * Math.PI / 180));
     var out = [];
     for (var r = Math.floor((lat - dLat) / pl); r <= Math.floor((lat + dLat) / pl); r++)
       for (var c = Math.floor((lon - dLon) / po); c <= Math.floor((lon + dLon) / po); c++)
-        if (q15.presenti[r + "_" + c]) out.push(r + "_" + c);
+        if (R.presenti[r + "_" + c]) out.push(r + "_" + c);
     return out;
   }
 
@@ -3945,7 +3981,7 @@
     };
   }
 
-  // Dijkstra con heap binario, fermo al limite in metri.
+  // Dijkstra con heap binario, fermo al limite in metri: da a verso b costa len, da b verso a ba.
   function q15Distanze(archi, sorgenti, limite) {
     var adj = new Map();
     archi.forEach(function (ed, i) {
@@ -3979,7 +4015,7 @@
       var top = pop(), d = top[0], n = top[1];
       if (d > dist.get(n) || d > limite) continue;
       (adj.get(n) || []).forEach(function (i) {
-        var ed = archi[i], m = ed.a === n ? ed.b : ed.a, nd = d + ed.len;
+        var ed = archi[i], m = ed.a === n ? ed.b : ed.a, nd = d + (ed.a === n ? ed.len : ed.ba);
         if (nd <= limite && (!dist.has(m) || nd < dist.get(m))) { dist.set(m, nd); push(m, nd); }
       });
     }
@@ -4002,11 +4038,14 @@
     return out;
   }
 
+  // Le posizioni lungo un arco sono in unita' di len (da a); il costo per tornare indietro
+  // di x e' x * ba / len.
+  function q15Indietro(ed, x) { return ed.len ? x * ed.ba / ed.len : x; }
   function q15Calcola(ll, inquadra) {
-    var gen = ++q15.gen;
-    q15MostraPannello('<p class="q15-msg">Calcolo le strade che raggiungi a piedi…</p>');
-    q15CaricaBasi().then(function () {
-      return Promise.all(q15RiquadriAttorno(ll.lat, ll.lng, Q15_MAX * Q15_VEL + 500).map(q15Riquadro));
+    var gen = ++q15.gen, M = q15M(), V = M.vel;
+    q15MostraPannello(q15HtmlModo() + '<p class="q15-msg">Calcolo le strade che raggiungi ' + M.come + "…</p>");
+    q15CaricaBasi().then(function (R) {
+      return Promise.all(q15RiquadriAttorno(R, ll.lat, ll.lng, M.max * V + 500).map(function (k) { return q15Riquadro(R, M, k); }));
     }).then(function (liste) {
       if (gen !== q15.gen || !q15.attivo) return;
       var archi = [].concat.apply([], liste);
@@ -4016,12 +4055,12 @@
         q15Risultati(ll, null);
         return;
       }
-      var se = start.ed, limite = Q15_MAX * Q15_VEL, L15 = Q15_MIN * Q15_VEL;
-      var dist = q15Distanze(archi, [[se.a, start.d + start.s], [se.b, start.d + se.len - start.s]], limite);
+      var se = start.ed, limite = M.max * V, L15 = Q15_MIN * V;
+      var dist = q15Distanze(archi, [[se.a, start.d + q15Indietro(se, start.s)], [se.b, start.d + se.len - start.s]], limite);
       function tempoArco(ag) {
         var ed = ag.ed, da = dist.has(ed.a) ? dist.get(ed.a) : Infinity, db = dist.has(ed.b) ? dist.get(ed.b) : Infinity;
-        var t = Math.min(da + ag.s, db + ed.len - ag.s);
-        if (ed === se) t = Math.min(t, start.d + Math.abs(ag.s - start.s));
+        var t = Math.min(da + ag.s, db + q15Indietro(ed, ed.len - ag.s));
+        if (ed === se) t = Math.min(t, start.d + (ag.s >= start.s ? ag.s - start.s : q15Indietro(ed, start.s - ag.s)));
         return t + ag.d;
       }
 
@@ -4029,10 +4068,12 @@
       var linee = [];
       archi.forEach(function (ed) {
         var da = dist.has(ed.a) ? dist.get(ed.a) : Infinity, db = dist.has(ed.b) ? dist.get(ed.b) : Infinity;
-        var x1 = Math.max(0, L15 - da), x2 = Math.max(0, L15 - db);
+        // x2 e' un costo da b: in posizione lungo l'arco vale x2 * len / ba.
+        var k = ed.ba ? ed.len / ed.ba : 1;
+        var x1 = Math.max(0, L15 - da), x2 = Math.max(0, L15 - db) * k;
         if (ed === se) {
           var r = L15 - start.d;
-          if (r > 0) linee.push(q15Tratto(ed, Math.max(0, start.s - r), Math.min(ed.len, start.s + r)));
+          if (r > 0) linee.push(q15Tratto(ed, Math.max(0, start.s - r * k), Math.min(ed.len, start.s + r)));
         }
         if (!x1 && !x2) return;
         if (x1 + x2 >= ed.len) linee.push(ed.pts);
@@ -4058,21 +4099,21 @@
       var trovati = q15.servizi.map(function (s) { return { s: s, minuti: null, linea: q15Metri(ll.lat, ll.lng, s.lat, s.lon) }; });
       var conEntro = {};
       trovati.forEach(function (x) {
-        if (x.linea > L15) return;
+        if (x.linea * M.aria > L15) return;
         var m = minutiDi(x);
         if (m <= limite) {
-          x.minuti = Math.max(1, Math.round(m / Q15_VEL));
+          x.minuti = Math.max(1, Math.round(m / V));
           if (x.minuti <= Q15_MIN && x.s.s === "attiva") conEntro[x.s.t] = true;
         }
       });
       SERVIZI_CATEGORIE.forEach(function (cat) {
         if (conEntro[cat.chiave] || cat.maiIlPiuVicino) return;
-        var oltre = trovati.filter(function (x) { return x.s.t === cat.chiave && x.s.s === "attiva" && x.linea > L15 && x.linea <= limite; })
+        var oltre = trovati.filter(function (x) { return x.s.t === cat.chiave && x.s.s === "attiva" && x.linea * M.aria > L15 && x.linea * M.aria <= limite; })
           .sort(function (a, b) { return a.linea - b.linea; });
         var meglio = Infinity;
-        for (var i = 0; i < oltre.length && oltre[i].linea <= meglio; i++) {
+        for (var i = 0; i < oltre.length && oltre[i].linea * M.aria <= meglio; i++) {
           var m = minutiDi(oltre[i]);
-          if (m <= limite) { oltre[i].minuti = Math.max(1, Math.round(m / Q15_VEL)); if (m < meglio) meglio = m; }
+          if (m <= limite) { oltre[i].minuti = Math.max(1, Math.round(m / V)); if (m < meglio) meglio = m; }
         }
       });
       q15Risultati(ll, trovati);
@@ -4086,7 +4127,7 @@
       }
     }).catch(function () {
       if (gen !== q15.gen) return;
-      q15MostraPannello('<p class="q15-msg">I dati per il calcolo a piedi non si sono caricati. Riprova più tardi.</p>');
+      q15MostraPannello(q15HtmlModo() + '<p class="q15-msg">I dati per il calcolo ' + M.come + " non si sono caricati. Riprova più tardi.</p>");
     });
   }
 
@@ -4099,14 +4140,28 @@
   function q15Icona(chiave) {
     return ICONE_SVG[chiave] ? '<span class="q15-ico" aria-hidden="true">' + svgConIdUnici(ICONE_SVG[chiave]) + "</span>" : "";
   }
+  // A piedi | In bici (solo se il build ha la rete bici), e in bici la casella delle piste.
+  function q15HtmlModo() {
+    if (!VERSIONI.bici) return "";
+    var h = '<div class="q15-modo" role="group" aria-label="Come ti muovi">';
+    [["piedi", "A piedi"], ["bici", "In bici"]].forEach(function (m) {
+      h += '<button type="button" data-modo="' + m[0] + '" aria-pressed="' + (q15.modo === m[0]) + '">' + m[1] + "</button>";
+    });
+    h += "</div>";
+    if (q15.modo === "bici" && VERSIONI.ciclabili)
+      h += '<label class="q15-piste"><input type="checkbox" class="chk-piste"' + (cicl.acceso ? " checked" : "") +
+        '><span class="lt-bici" aria-hidden="true"></span>Piste ciclabili sulla mappa</label>';
+    return h;
+  }
   function q15Risultati(ll, trovati) {
+    var M = q15M();
     var area = areaDelPunto(ll), dove = area ? (isZF(area.feature.properties) ? "Zona funzionale " : "") + area.feature.properties.denominazione : "";
-    var h = '<span class="eyebrow">A piedi in 15 minuti</span><h2>Cosa raggiungi da qui</h2>' +
-      (dove ? '<p class="q15-dove">' + escapeHtml(dove) + "</p>" : "") +
+    var h = '<span class="eyebrow">' + M.titolo + '</span><h2>Cosa raggiungi da qui</h2>' +
+      (dove ? '<p class="q15-dove">' + escapeHtml(dove) + "</p>" : "") + q15HtmlModo() +
       // telefono: i servizi sono tutti accesi; il foglio Servizi serve a spegnerne qualcuno
       (trovati ? '<button type="button" class="q15-servizi" aria-controls="servizi-panel">Filtra i servizi</button>' : "");
     if (!trovati) {
-      h += '<p class="q15-msg">Qui non passano strade percorribili a piedi. Sposta il punto su una strada.</p>';
+      h += '<p class="q15-msg">Qui non passano strade percorribili ' + M.come + ". Sposta il punto su una strada.</p>";
       q15MostraPannello(h);
       mostraServiziQuindici([], {});
       return;
@@ -4139,7 +4194,7 @@
         } else {
           var lontana = attivi.slice().sort(function (a, b) { return a.linea - b.linea; })[0];
           if (lontana) vicini.push(lontana);
-          sez += '<p class="q15-manca">' + nessuno + " entro 25 minuti a piedi." + (lontana ? " " + ilPiu + " è <b>" + escapeHtml(lontana.s.n) + "</b>, a " +
+          sez += '<p class="q15-manca">' + nessuno + " entro " + M.max + " minuti " + M.come + "." + (lontana ? " " + ilPiu + " è <b>" + escapeHtml(lontana.s.n) + "</b>, a " +
             (lontana.linea / 1000).toLocaleString("it-IT", { maximumFractionDigits: 1 }) + " km in linea d'aria." : "") + "</p>";
         }
       }
@@ -4157,14 +4212,14 @@
       h += '<details class="q15-gruppo" data-gruppo="' + g.chiave + '"' + (aperto ? " open" : "") + "><summary>" +
         escapeHtml(g.etichetta) + "</summary>" + (idx === 0 ? perGruppo[g.chiave].join("") : "") + "</details>";
     });
-    document.getElementById("q15-annuncio").textContent = "Calcolato cosa raggiungi a piedi" + (dove ? " da " + dove : "") + ".";
-    h += '<p class="q15-fonti">Percorsi a piedi sulla rete di OpenStreetMap, a 4,8 km/h, tempi indicativi. Fonti dei servizi nel pannello “Cos’è”.</p>';
+    document.getElementById("q15-annuncio").textContent = "Calcolato cosa raggiungi " + M.come + (dove ? " da " + dove : "") + ".";
+    h += '<p class="q15-fonti">' + M.fonti + " Fonti dei servizi nel pannello “Cos’è”.</p>";
     q15MostraPannello(h);
     q15CompletaGruppi();
     // Marker e caselle subito dopo il primo disegno del pannello, nello stesso gen.
     var gen = q15.gen, lista = vicini.map(function (x) {
       // i props completi del servizio (la scheda ne legge indirizzo, area, info), piu' i minuti
-      var props = { categoria: x.s.t, nome: x.s.n, prevista: x.s.s !== "attiva", minuti: x.minuti };
+      var props = { categoria: x.s.t, nome: x.s.n, prevista: x.s.s !== "attiva", minuti: x.minuti, come: M.come };
       if (x.s.p) Object.keys(x.s.p).forEach(function (k) { if (!(k in props)) props[k] = x.s.p[k]; });
       return { props: props, latlng: L.latLng(x.s.lat, x.s.lon) };
     });
@@ -4214,7 +4269,7 @@
     } else {
       q15.marker.setLatLng(ll);
     }
-    if (history.replaceState) history.replaceState(null, "", "#15=" + ll.lat.toFixed(4) + "," + ll.lng.toFixed(4));
+    if (history.replaceState) history.replaceState(null, "", "#15=" + ll.lat.toFixed(4) + "," + ll.lng.toFixed(4) + (q15.modo === "bici" ? ",bici" : ""));
     q15Panel.classList.add("con-punto");   // telefono: altezza fissa, niente salti (CSS)
     q15Calcola(ll, inquadra !== false);
   }
@@ -4222,7 +4277,7 @@
   // ripristino: riaccesa dal codice (link #15=, avanti e indietro, ritorno dalla 3D), non
   // dalla persona: le statistiche contano solo l'accensione vera, una per volta.
   function q15Attiva(silenzioso, ripristino) {
-    if (!q15.attivo && !ripristino) traccia("15-minuti");
+    if (!q15.attivo && !ripristino) traccia("15-minuti", { modo: q15.modo });
     // Il buio dell'ingresso coprirebbe l'alone dei 15 minuti: si spegne (la selezione
     // resta) e torna, senza volo, alla chiusura. Prima di accendere la modalita': coi
     // 15 minuti accesi il focus non tocca piu' i servizi.
@@ -4240,9 +4295,23 @@
     q15CaricaBasi().catch(function () {});
     if (!silenzioso) {
       // su telefono la scheda resta scelta ma nascosta (body.q15-on): torna alla chiusura
-      q15MostraPannello('<span class="eyebrow">A piedi in 15 minuti</span><h2>Scegli un punto</h2>' +
-        '<p class="q15-msg">Tocca la mappa, cerca una via o usa il tasto della tua posizione: calcolo cosa raggiungi a piedi in circa 15 minuti, sulle strade vere.</p>');
+      q15MostraPannello(q15HtmlScegli());
     }
+    if (q15.modo === "bici" && VERSIONI.ciclabili) ciclabiliAccendi(true);
+  }
+  function q15HtmlScegli() {
+    var M = q15M();
+    return '<span class="eyebrow">' + M.titolo + "</span><h2>Scegli un punto</h2>" + q15HtmlModo() +
+      '<p class="q15-msg">Tocca la mappa, cerca una via o usa il tasto della tua posizione: calcolo cosa raggiungi ' + M.come + " in circa 15 minuti, sulle strade vere.</p>";
+  }
+  // Cambio fra a piedi e in bici: col punto gia' scelto si ricalcola da li'.
+  function q15ImpostaModo(modo) {
+    if (!Q15_MODI[modo] || modo === q15.modo || (modo === "bici" && !VERSIONI.bici)) return;
+    q15.modo = modo;
+    traccia("15-minuti", { modo: modo });
+    if (modo === "bici" && VERSIONI.ciclabili) ciclabiliAccendi(true);
+    if (q15.attivo && q15.marker) q15Piazza(q15.marker.getLatLng(), true);
+    else if (q15.attivo) q15MostraPannello(q15HtmlScegli());
   }
   function q15Disattiva() {
     q15.attivo = false; q15.gen++;
@@ -4282,7 +4351,17 @@
   });
   // Build senza rete pedonale: il pulsante non c'e'.
   if (!VERSIONI.rete) q15Btn.hidden = true;
-  q15Body.addEventListener("click", function (ev) { if (ev.target.closest && ev.target.closest(".q15-servizi")) apriFoglioServizi(); });
+  q15Body.addEventListener("click", function (ev) {
+    if (!ev.target.closest) return;
+    if (ev.target.closest(".q15-servizi")) apriFoglioServizi();
+    var bm = ev.target.closest(".q15-modo button");
+    if (bm) q15ImpostaModo(bm.getAttribute("data-modo"));
+  });
+  q15Body.addEventListener("change", function (ev) {
+    if (ev.target.classList && ev.target.classList.contains("chk-piste")) ciclabiliAccendi(ev.target.checked, true);
+  });
+  // Con la rete bici il tasto dice che c'e' anche la bici.
+  if (VERSIONI.bici) document.getElementById("q15-toggle-testo").textContent = "15 minuti a piedi o in bici";
 
   // Telefono: i 15 minuti partono dall'azione della scheda, sull'area scelta (dal centro
   // del tracciato se c'e' una via aperta, come la pillola su desktop), o dal foglio Livelli
@@ -4346,6 +4425,59 @@
   // (prima la mappa restava dov'era).
   map.on("click", function (ev) { if (q15.attivo) q15Piazza(ev.latlng, true); });
   registraStrato(50, function () { return q15.attivo && !tourAttivo(); }, function () { q15Disattiva(); });
+
+  // ====================================================================
+  // Piste ciclabili (ciclabili/ciclabili.json, da prepara_rete_bici.py): piste separate
+  // a tratto pieno, corsie sulla strada tratteggiate. Si accendono dalla legenda (o dal
+  // foglio Livelli su telefono) e da sole quando si sceglie la bici nei 15 minuti.
+  // ====================================================================
+  var CICL_COLORE = "#1E7A45";
+  var cicl = { acceso: false, dati: null, layer: null };
+  map.createPane("ciclabiliPane");
+  map.getPane("ciclabiliPane").style.zIndex = 425;   // sopra i confini dell'area, sotto i 15 minuti
+  map.getPane("ciclabiliPane").style.pointerEvents = "none";
+  var ciclRenderer = L.canvas({ pane: "ciclabiliPane", padding: 0.3 });
+  var chkCiclabili = document.getElementById("chk-ciclabili");
+  document.getElementById("lt-ciclabili").hidden = !VERSIONI.ciclabili;
+  function ciclabiliCarica() {
+    if (!cicl.dati) {
+      cicl.dati = q15Json(conVersione("ciclabili/ciclabili.json", "ciclabili")).then(function (d) {
+        var piste = [], corsie = [];
+        d.l.forEach(function (r) {
+          var f = r[1], la = f[0], lo = f[1], pts = [[la / 1e5, lo / 1e5]];
+          for (var i = 2; i < f.length; i += 2) { la += f[i]; lo += f[i + 1]; pts.push([la / 1e5, lo / 1e5]); }
+          (r[0] === 1 ? corsie : piste).push(pts);
+        });
+        return { piste: piste, corsie: corsie };
+      }).catch(function (e) { cicl.dati = null; throw e; });
+    }
+    return cicl.dati;
+  }
+  // daPersona: acceso o spento con una casella (si conta nelle statistiche).
+  function ciclabiliAccendi(si, daPersona) {
+    si = !!si && !!VERSIONI.ciclabili;
+    if (si && daPersona && !cicl.acceso) traccia("ciclabili");
+    cicl.acceso = si;
+    chkCiclabili.checked = si;
+    [].forEach.call(document.querySelectorAll(".chk-piste"), function (c) { c.checked = si; });
+    if (!si) { if (cicl.layer) map.removeLayer(cicl.layer); return; }
+    ciclabiliCarica().then(function (g) {
+      if (!cicl.acceso) return;
+      if (!cicl.layer) {
+        var o = { renderer: ciclRenderer, interactive: false, lineCap: "round", lineJoin: "round" };
+        cicl.layer = L.layerGroup([
+          L.polyline(g.piste.concat(g.corsie), L.extend({ color: "#FFFFFF", weight: 5, opacity: 0.75 }, o)),
+          L.polyline(g.piste, L.extend({ color: CICL_COLORE, weight: 2.6, opacity: 0.95 }, o)),
+          L.polyline(g.corsie, L.extend({ color: CICL_COLORE, weight: 2.4, opacity: 0.95, dashArray: "5 5", lineCap: "butt" }, o))
+        ]);
+      }
+      cicl.layer.addTo(map);
+    }).catch(function () {
+      avviso("Le piste ciclabili non si sono caricate. Riprova più tardi.");
+      ciclabiliAccendi(false);
+    });
+  }
+  chkCiclabili.addEventListener("change", function () { ciclabiliAccendi(chkCiclabili.checked, true); });
 
   // ====================================================================
   // Prima vista: dove i servizi essenziali NON sono a 15 minuti a piedi.
@@ -4757,9 +4889,9 @@
   function leggiHash() {
     try { return decodeURIComponent((location.hash || "").replace(/^#/, "")); } catch (e) { return ""; }
   }
-  // Il punto di un hash #15=lat,lng, o null se non e' un numero valido.
+  // Il punto di un hash #15=lat,lng (in bici #15=lat,lng,bici), o null se non e' un numero valido.
   function punto15DaHash(h) {
-    var m = /^15=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(h);
+    var m = /^15=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(,bici)?$/.exec(h);
     if (!m) return null;
     var lat = parseFloat(m[1]), lng = parseFloat(m[2]);
     return (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) ? L.latLng(lat, lng) : null;
@@ -4793,6 +4925,7 @@
         setTimeout(function () { avviso(VERSIONI.rete ? "Il punto del link è fuori Roma." : "Il calcolo a piedi non è disponibile."); }, avvio ? 800 : 0);
         return;
       }
+      q15.modo = /,bici$/.test(h) && VERSIONI.bici ? "bici" : "piedi";
       if (!avvio) { q15Attiva(true, true); q15Piazza(ll15, true); return; }
       new Promise(function (ok) { map.once("moveend", ok); setTimeout(ok, 700); }).then(function () { q15Attiva(true, true); q15Piazza(ll15, true); });
       return;
@@ -5799,7 +5932,7 @@
     serviziOrigine = (att && att !== document.body && !serviziPanelEl.contains(att)) ? att : null;
     chiudiLivelli(); cercaApri(false); chiudiDrawer();
     var info = document.getElementById("info-panel");
-    var dove = q15.attivo ? "a piedi in 15 minuti" :
+    var dove = q15.attivo ? q15M().come + " in 15 minuti" :
       (info.classList.contains("visible") ? document.getElementById("info-denominazione").textContent : document.getElementById("cartiglio-nome").textContent);
     document.getElementById("servizi-dove").textContent = dove ? "· " + dove : "";
     // Dati non ancora arrivati (o area appena scelta, a volo in corso): il foglio dice che
@@ -6034,7 +6167,7 @@
       if (info.z) cap.push(pluraleScheda(info.z, "sezione", "sezioni"));
       if (cap.length) h += '<p class="ss-riga">' + cap.join(" · ") + "</p>";
     }
-    if (p.minuti) h += '<p class="ss-riga ss-min">' + p.minuti + " min a piedi dal punto</p>";
+    if (p.minuti) h += '<p class="ss-riga ss-min">' + p.minuti + " min " + (p.come || "a piedi") + " dal punto</p>";
     // Farmacie e pronto soccorso: la mappa non sa orari, turni e attese.
     if (p.categoria === "farmacie" || /^pronto_soccorso/.test(p.categoria))
       h += '<p class="ss-riga ss-det">Orari e turni non sono sulla mappa: verificali prima di andare</p>';
@@ -6211,7 +6344,7 @@
     var marker = L.marker(posizione || punto.latlng, { icon: icon, pane: "serviziPane", keyboard: false, riseOnHover: true });
     var testo = escapeHtml(nomeServizio(punto.props)) + (punto.props.prevista ? " (prevista)" : "") + '<span class="st-cat">' +
       escapeHtml(SERVIZI_SINGOLARI[punto.props.categoria] || punto.props.categoria) +
-      (punto.props.minuti ? " · " + escapeHtml(q15Minuti(punto.props.minuti)) + " a piedi" : "") + "</span>";
+      (punto.props.minuti ? " · " + escapeHtml(q15Minuti(punto.props.minuti)) + " " + (punto.props.come || "a piedi") : "") + "</span>";
     marker.bindTooltip(testo, { direction: "top", offset: [0, -dim * 0.85], className: "servizio-tooltip" });
     marcatoreTastiera(marker, (SERVIZI_SINGOLARI[punto.props.categoria] || punto.props.categoria) + ": " + nomeServizio(punto.props) + (punto.props.prevista ? " (prevista)" : ""));
     // Il clic apre la scheda del servizio (il tooltip col nome resta solo al passaggio del mouse).

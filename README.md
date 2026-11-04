@@ -8,6 +8,12 @@ La mappa è online su [romaquartieri.it](https://romaquartieri.it/).
 
 ## Novità
 
+Nella prossima versione:
+
+- una nuova famiglia di servizi, Trasporti: 73 stazioni della metro, 105 fermate del tram (le fermate omonime vicine sono un punto solo) e 70 stazioni dei treni (FL1-FL8, Leonardo Express, Metromare, Roma-Viterbo), con le linee nella scheda
+- i 15 minuti anche in bici: un interruttore A piedi | In bici nel pannello, a circa 15 km/h sulla rete stradale, con i sensi unici, i sampietrini e le aree pedonali
+- le piste ciclabili sulla mappa 2D (circa 374 km di piste e 46 km di corsie), dalla legenda o dal pannello dei 15 minuti in bici
+
 Con la versione del 2 novembre 2026:
 
 - la mappa si apre in 3D: le 457 aree cadono come tessere dal centro verso fuori e una guida in cinque passi mostra municipio, quartiere, servizi, via e 15 minuti
@@ -41,6 +47,8 @@ Scrive la cartella `dist/`:
 - `strade/`: lo stradario, caricato solo quando si cerca una via (circa 4 MB)
 - `servizi/servizi.json`: i servizi del focus e dei 15 minuti, un file solo (circa 0,6 MB)
 - `rete/`: la rete pedonale in riquadri, caricata solo attorno al punto scelto (circa 20 MB)
+- `rete-bici/`: la rete per la bici, negli stessi riquadri (circa 20 MB, facoltativa)
+- `ciclabili/ciclabili.json`: le piste e le corsie ciclabili da disegnare (circa 100 KB)
 - `3d/`: MapLibre GL (con la sua licenza) e il modulo della vista 3D, scaricati solo al primo tocco su "3D"
 - `OFL.txt` e `leaflet-LICENSE.txt`: le licenze del font Montserrat e di Leaflet
 - `og.png`: l'immagine di anteprima per i social
@@ -70,7 +78,7 @@ poi si apre `http://localhost:8731/index.html`.
 
 ### La città dei 15 minuti
 
-Il pulsante "A piedi in 15 minuti" calcola, da un punto sulla mappa (un tocco, una via cercata, "Dove sono" o un link `#15=lat,lon`), le strade raggiungibili a piedi in circa 15 minuti e i servizi lungo il percorso. Il calcolo gira nel browser, a 4,8 km/h sulla rete pedonale.
+Il pulsante "15 minuti a piedi o in bici" (solo "A piedi in 15 minuti" se manca la rete per la bici) calcola, da un punto sulla mappa (un tocco, una via cercata, "Dove sono" o un link `#15=lat,lon`), le strade raggiungibili a piedi in circa 15 minuti e i servizi lungo il percorso. Il calcolo gira nel browser, a 4,8 km/h sulla rete pedonale.
 
 La rete pedonale è ricavata da OpenStreetMap e pesa circa 20 MB, per questo non sta nel repository. Per averla:
 
@@ -80,6 +88,22 @@ python3 prepara_rete_pedonale.py centro-latest.osm.pbf
 ```
 
 L'estratto dell'Italia centrale si scarica da `https://download.geofabrik.de/europe/italy/centro-latest.osm.pbf`. Lo script scrive `data/rete/` (circa 1.175 riquadri). Senza quella cartella il build di anteprima non si ferma: avvisa e la mappa esce senza il pulsante dei 15 minuti, mentre un link `#15=` apre la mappa normale con un avviso.
+
+#### In bici
+
+Nel pannello dei 15 minuti l'interruttore A piedi | In bici rifà il calcolo in bici, fino a 20 minuti per i servizi più vicini. Il link diventa `#15=lat,lon,bici`. La rete per la bici dà a ogni tratto un costo in "metri equivalenti" a 15 km/h:
+
+- strade residenziali e terziarie a 14 km/h, secondarie a 13, primarie a 12, piste ciclabili a 16, sterrati a 11 (al massimo 10 su fondo sterrato), sampietrini a tre quarti della velocità;
+- contromano sui sensi unici (se la bici non ha il suo doppio senso) e nelle aree pedonali senza permesso per le bici si va a piedi, bici a mano, a 5 km/h;
+- niente autostrade, superstrade senza permesso per le bici né scale.
+
+Le salite non sono contate (OpenStreetMap non ha le quote): i tempi sono indicativi. La rete e le piste ciclabili si rifanno dallo stesso estratto:
+
+```bash
+python3 prepara_rete_bici.py centro-latest.osm.pbf
+```
+
+Lo script scrive `data/rete-bici/` (non nel repository, come la rete pedonale) e `data/ciclabili/ciclabili.json` (nel repository). Senza `data/rete-bici/` il build non si ferma, neanche in produzione: la mappa esce solo col calcolo a piedi. Le piste ciclabili si accendono dalla legenda della 2D e da sole quando si passa in bici; in 3D non si vedono.
 
 Lo strato della copertura qui sotto è spento nel rilascio del 2026-11-02: `COPERTURA_NEL_RILASCIO = False` in `build.py`, e la 2D esce come senza il file (niente esagoni, legenda né fonte GHS-POP). Il codice resta; con `True` torna tutto.
 
@@ -127,7 +151,7 @@ Lo script si carica `async` (un server lento non ferma la pagina né l'intro), r
 Gli eventi non portano mai testo scritto da chi visita né la sua posizione, solo valori da elenchi chiusi:
 
 - `municipio` (numero romano), `quartiere` (nome dell'area e municipio), `via` (nome dallo stradario), `servizio` (categoria);
-- `ricerca-vuota` (una ricerca senza risultati, senza il testo), `15-minuti` (la modalità accesa), `vista` (3D o 2D, dal tasto);
+- `ricerca-vuota` (una ricerca senza risultati, senza il testo), `15-minuti` (la modalità accesa, con `modo`: piedi o bici), `ciclabili` (le piste accese da chi visita), `vista` (3D o 2D, dal tasto);
 - `condividi` (cosa: area, via, 15-minuti, municipio, pagina), `dove-sono` (solo l'esito: ok, negato, errore), `intro` (completa o saltata);
 - `link-condiviso` (la pagina aperta da un link, solo il tipo: area, via, 15-minuti, municipio, 3d, presentazione, copertura, altro; un ricaricamento o avanti e indietro non contano).
 
@@ -139,7 +163,9 @@ Si contano solo i gesti veri: non la guida alla mappa, non la presentazione, non
 
 I dati sono già pronti in `data/`: confini di quartieri e municipi, stradario, servizi, scuole e presidi. Il build usa solo quei file.
 
-Gli script `importa_dati.py`, `importa_servizi.py`, `prepara_scuole.py`, `prepara_servizi_15_minuti.py` e `prepara_rete_pedonale.py` descrivono come sono stati ottenuti, partendo dai servizi WFS del geoportale di Roma Capitale, dall'anagrafe del Ministero dell'Istruzione e del Merito e dall'estratto OpenStreetMap. Due script prendono la cartella delle fonti da riga di comando: `prepara_servizi_15_minuti.py <cartella fonti> [civici_*.csv ...]` (o con la variabile `MAPPA_FONTI`) e `icone/prepara_icone_app.py [<cartella illustrazioni>]` (o `MAPPA_ILLUSTRAZIONI`). Le farmacie vengono dall'anagrafe del Ministero della Salute (solo quelle attive alla data del file): `prepara_farmacie.py <FRM_FARMA_5_AAAAMMGG.csv> <civici_*.csv ...>` aggancia l'indirizzo ufficiale ai numeri civici di Roma Capitale e riscrive solo la categoria farmacie di `data/servizi/servizi.json`. Va lanciato dopo `importa_servizi.py`, che scrive ancora le farmacie del Piano dei Servizi. I dati attuali sono quelli del file del 30/10/2026, scaricato dalla [pagina del dataset](https://www.dati.salute.gov.it/it/dataset/farmacie/) (licenza IODL 2.0).
+Gli script `importa_dati.py`, `importa_servizi.py`, `prepara_scuole.py`, `prepara_servizi_15_minuti.py`, `prepara_rete_pedonale.py`, `prepara_rete_bici.py` e `prepara_trasporti.py` descrivono come sono stati ottenuti, partendo dai servizi WFS del geoportale di Roma Capitale, dall'anagrafe del Ministero dell'Istruzione e del Merito e dall'estratto OpenStreetMap. Due script prendono la cartella delle fonti da riga di comando: `prepara_servizi_15_minuti.py <cartella fonti> [civici_*.csv ...]` (o con la variabile `MAPPA_FONTI`) e `icone/prepara_icone_app.py [<cartella illustrazioni>]` (o `MAPPA_ILLUSTRAZIONI`). Le farmacie vengono dall'anagrafe del Ministero della Salute (solo quelle attive alla data del file): `prepara_farmacie.py <FRM_FARMA_5_AAAAMMGG.csv> <civici_*.csv ...>` aggancia l'indirizzo ufficiale ai numeri civici di Roma Capitale e riscrive solo la categoria farmacie di `data/servizi/servizi.json`. Va lanciato dopo `importa_servizi.py`, che scrive ancora le farmacie del Piano dei Servizi. I dati attuali sono quelli del file del 30/10/2026, scaricato dalla [pagina del dataset](https://www.dati.salute.gov.it/it/dataset/farmacie/) (licenza IODL 2.0).
+
+Le stazioni della metro, le fermate del tram e le stazioni dei treni vengono dall'estratto OpenStreetMap: `prepara_trasporti.py centro-latest.osm.pbf` legge le linee (relazioni route della metro A, B, B1 e C, dei tram ATAC, delle FL, del Leonardo Express, della Metromare e della Roma-Viterbo), le aggancia alle stazioni e riscrive solo le categorie metro, tram e treno di `data/servizi/servizi.json`. Va lanciato dopo `importa_servizi.py` e `prepara_farmacie.py`. Restano fuori le stazioni che in OpenStreetMap non hanno nessuna linea.
 
 Rigenerare i dati dipende da fonti esterne che non sono incluse in questo repository (estratti, elenchi dei civici, file degli enti), quindi non fa parte del normale ciclo di build.
 
@@ -192,6 +218,8 @@ prepara_scuole.py                scuole e nidi (con --dettagli per le schede)
 prepara_farmacie.py              farmacie dall'anagrafe del Ministero della Salute
 prepara_servizi_15_minuti.py     case della comunità e pronto soccorso
 prepara_rete_pedonale.py         rete pedonale da OpenStreetMap
+prepara_rete_bici.py             rete per la bici e piste ciclabili da OpenStreetMap
+prepara_trasporti.py             stazioni della metro, fermate del tram e stazioni dei treni da OpenStreetMap
 prepara_copertura_15_minuti.py   copertura dei 15 minuti a esagoni (spenta in questo rilascio)
 ```
 

@@ -97,6 +97,12 @@ OFL_OUT = DIST_DIR / "OFL.txt"
 META_NOINDEX = '<meta name="robots" content="noindex, nofollow">'
 RETE_SRC = SCRIPT_DIR / "data" / "rete"
 RETE_OUT = DIST_DIR / "rete"
+# 15 minuti in bici: rete a parte (prepara_rete_bici.py, ~20 MB, fuori da git come la pedonale)
+# e piste ciclabili da mostrare sulla mappa (~0,1 MB, nel repository).
+RETE_BICI_SRC = SCRIPT_DIR / "data" / "rete-bici"
+RETE_BICI_OUT = DIST_DIR / "rete-bici"
+CICLABILI_SRC = SCRIPT_DIR / "data" / "ciclabili" / "ciclabili.json"
+CICLABILI_OUT = DIST_DIR / "ciclabili"
 # Prima vista della 2D: dove i servizi essenziali non si raggiungono a piedi in 15 minuti
 # (prepara_copertura_15_minuti.py). Senza il file la mappa esce senza quello strato.
 COPERTURA_SRC = SCRIPT_DIR / "data" / "copertura" / "copertura.json"
@@ -190,6 +196,9 @@ CATEGORIA_ICONA = {
     "mercati": "mercato.svg",
     "biblioteche": "biblioteca.svg",
     "consultori": "consultorio.svg",
+    "metro": "metro.svg",
+    "tram": "tram.svg",
+    "treno": "treno.svg",
 }
 
 # Whitelist delle properties: garanzia sul CONTENUTO, non solo sui file di input.
@@ -541,6 +550,8 @@ def config_vercel(produzione=False):
             {"source": "/index.html", "headers": [{"key": "Cache-Control", "value": "public, max-age=0, must-revalidate"}]},
             {"source": "/strade/(.*)", "headers": immutabile},
             {"source": "/rete/(.*)", "headers": immutabile},
+            {"source": "/rete-bici/(.*)", "headers": immutabile},
+            {"source": "/ciclabili/(.*)", "headers": immutabile},
             {"source": "/copertura/(.*)", "headers": immutabile},
             {"source": "/servizi/(.*)", "headers": immutabile},
             {"source": "/3d/(.*)", "headers": immutabile},
@@ -764,6 +775,52 @@ def copia_rete(produzione=False):
     return hash_corto(file_rete)
 
 
+def copia_rete_bici():
+    # 15 minuti in bici: stesso formato della rete pedonale, coi metri equivalenti a
+    # 15 km/h (prepara_rete_bici.py). Facoltativa anche in produzione: senza, la mappa
+    # esce col solo "a piedi" (versione a None).
+    if RETE_BICI_OUT.exists():
+        shutil.rmtree(RETE_BICI_OUT)
+    if not (RETE_BICI_SRC / "indice.json").exists():
+        print("ATTENZIONE: manca la rete bici " + str(RETE_BICI_SRC) + ": la mappa esce senza "
+              "i 15 minuti in bici (python3 prepara_rete_bici.py).")
+        return None
+    shutil.copytree(RETE_BICI_SRC, RETE_BICI_OUT)
+    file_rete = sorted(RETE_BICI_OUT.glob("*.json"))
+    for f in file_rete:
+        uscita = io.StringIO()
+        with contextlib.redirect_stdout(uscita):
+            esito = check_zero_footprint(f)
+        if esito != 0:
+            print(uscita.getvalue())
+            raise SystemExit("Errore: il gate ha trovato footprint in " + str(f) + ". Build FALLITA.")
+    print("15 minuti in bici: " + str(len(list(RETE_BICI_OUT.glob("r*.json")))) + " riquadri, gate OK.")
+    return hash_corto(file_rete)
+
+
+def copia_ciclabili():
+    # Piste e corsie ciclabili, riscritte campo per campo (tipo 0/1 e interi): solo geometria.
+    if CICLABILI_OUT.exists():
+        shutil.rmtree(CICLABILI_OUT)
+    if not CICLABILI_SRC.exists():
+        print("ATTENZIONE: manca " + str(CICLABILI_SRC) + ": la mappa esce senza piste ciclabili.")
+        return None
+    try:
+        d = json.loads(CICLABILI_SRC.read_text(encoding="utf-8"))
+        linee = [[int(t), [int(x) for x in flat]] for t, flat in d["l"]]
+        if any(t not in (0, 1) or len(flat) < 4 or len(flat) % 2 for t, flat in linee):
+            raise ValueError("tratti non validi")
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise SystemExit("Errore: " + str(CICLABILI_SRC) + " non valido (" + str(exc) + ").")
+    CICLABILI_OUT.mkdir(parents=True)
+    f = CICLABILI_OUT / "ciclabili.json"
+    f.write_text(json.dumps({"l": linee}, separators=(",", ":")), encoding="utf-8")
+    if check_zero_footprint(f) != 0:
+        raise SystemExit("Errore: il gate ha trovato footprint in " + str(f) + ". Build FALLITA.")
+    print("Piste ciclabili: " + str(len(linee)) + " tratti, gate OK.")
+    return hash_corto([f])
+
+
 def copia_copertura():
     # Esagoni abitati coi minuti a piedi per categoria essenziale, riscritti campo per
     # campo (solo numeri): nient'altro arriva in dist/. Senza il file la build non si
@@ -871,6 +928,8 @@ def main(argv=None):
         "strade": copia_strade(),
         "servizi": copia_servizi(),
         "rete": copia_rete(produzione),
+        "bici": copia_rete_bici(),
+        "ciclabili": copia_ciclabili(),
         "copertura": copia_copertura(),
         "3d": copia_vista_3d(),
     }

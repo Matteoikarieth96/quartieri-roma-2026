@@ -2,7 +2,7 @@
 
 La licenza MIT di questo repository (`LICENSE`) copre solo il codice sorgente: gli script di build e di preparazione dei dati, il template HTML, il JavaScript e il CSS scritti per questo progetto e i test. Non copre:
 
-- i dati in `data/` e la rete pedonale ricavata da quei dati, che vengono da terzi con le loro condizioni
+- i dati in `data/` e le reti a piedi e in bici ricavate da quei dati, che vengono da terzi con le loro condizioni
 - le librerie e i font in `vendor/`, che tengono le proprie licenze
 - il nome "Urbe Hub" e il suo logo (`brand/urbe-hub-donor.png`, anche dentro `brand/og.png`), che non sono concessi per il riuso
 
@@ -13,7 +13,7 @@ Le condizioni di ciascun materiale sono qui sotto.
 | Dato | Dove | Fonte | Condizioni |
 |---|---|---|---|
 | Aree della deliberazione n. 150/2026 (quartieri, rioni, zone funzionali), stradario, Piano dei Servizi, servizi educativi, numeri civici | `data/` | Roma Capitale, geoportale GeoRoma (`geoportale.comune.roma.it`) | Dati aperti ai sensi dell'art. 52, comma 2, del Codice dell'amministrazione digitale (d.lgs. 82/2005), con fonte Roma Capitale. La licenza CC BY 4.0 vale solo per gli strati che la dichiarano espressamente. Per gli altri non c'è una licenza dichiarata sul geoportale |
-| Confini dei municipi, rete pedonale dei 15 minuti e posizione di alcuni pronto soccorso | `data/municipi-roma.geojson` (admin_level=9), `data/rete/` (non nel repository), `data/servizi-15-minuti.json`, `data/servizi/servizi.json` | OpenStreetMap | Open Database License (ODbL) 1.0, © OpenStreetMap contributors. Dati derivati: vanno mantenuti con la stessa licenza e la stessa attribuzione. Il metodo per rifare la rete pedonale è `prepara_rete_pedonale.py` |
+| Confini dei municipi, reti dei 15 minuti a piedi e in bici, piste ciclabili, stazioni della metro, fermate del tram, stazioni dei treni e posizione di alcuni pronto soccorso | `data/municipi-roma.geojson` (admin_level=9), `data/rete/` e `data/rete-bici/` (non nel repository), `data/ciclabili/ciclabili.json`, `data/servizi-15-minuti.json`, `data/servizi/servizi.json` | OpenStreetMap | Open Database License (ODbL) 1.0, © OpenStreetMap contributors. Dati derivati: vanno mantenuti con la stessa licenza e la stessa attribuzione. Il metodo per rifarli è in `prepara_rete_pedonale.py`, `prepara_rete_bici.py` e `prepara_trasporti.py` |
 | Anagrafe delle scuole statali e paritarie (a.s. 2026/27) | `data/scuole.json`, `data/scuole-dettagli.json`, `data/servizi/servizi.json` | Ministero dell'Istruzione e del Merito, dati aperti | Italian Open Data License 2.0 (IODL 2.0), con indicazione della fonte |
 | Farmacie attive (anagrafe al 30/10/2026) | `data/servizi/servizi.json` | Ministero della Salute, dati aperti (`dati.salute.gov.it`), con posizioni dai numeri civici di Roma Capitale | Italian Open Data License 2.0 (IODL 2.0), con indicazione della fonte. Si mostrano solo tipo e indirizzo, non la ragione sociale |
 | Case della Comunità | `data/servizi-15-minuti.json`, `data/servizi/servizi.json` | AGENAS | Dati pubblicati dall'ente. Nessuna licenza dichiarata: si indica la fonte |

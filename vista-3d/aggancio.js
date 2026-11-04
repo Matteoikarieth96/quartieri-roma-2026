@@ -167,11 +167,11 @@
       // 15 minuti accesi: si chiudono e tornano, sullo stesso punto, al ritorno in 2D.
       q15Salvato = null;
       if (q15 && q15.attivo) {
-        var m15 = /^15=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(leggiHash());
+        var m15 = /^15=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(,bici)?$/.exec(leggiHash());
         if (m15 && !(isFinite(parseFloat(m15[1])) && isFinite(parseFloat(m15[2])))) m15 = null;
         q15Salvato = m15 ? L.latLng(parseFloat(m15[1]), parseFloat(m15[2])) : (q15.marker ? q15.marker.getLatLng() : true);
         q15Disattiva();
-        if (m15 && history.replaceState) history.replaceState(history.state, "", "#15=" + m15[1] + "," + m15[2]);
+        if (m15 && history.replaceState) history.replaceState(history.state, "", "#15=" + m15[1] + "," + m15[2] + (m15[3] || ""));
       }
       aperta = true; segna(true);
       // il municipio che la 2D mostra davvero: il menu segue la 3D, la 2D no (applicaA2D)
