@@ -1183,7 +1183,7 @@
   // appoggiato sopra l'icona.
   function testoServizio(p) {
     var nome = (p.nome === singolare(p.cat) && p.ind) ? p.ind : p.nome;
-    return esc(nome) + (p.prevista ? " (prevista)" : "") + '<span class="st-cat">' + esc(singolare(p.cat)) + "</span>";
+    return esc(nome) + (p.prevista ? (p.chiusa ? " (chiusa per lavori)" : " (prevista)") : "") + '<span class="st-cat">' + esc(singolare(p.cat)) + "</span>";
   }
   function popup(el, html, elenco) {
     var p = S.ui.popup, r = el.getBoundingClientRect(), b = S.el.getBoundingClientRect();
@@ -1568,7 +1568,8 @@
   }
   function apriServizio(s, el) {
     if (S.opt.schedaServizio) { chiudiPopup(); S.opt.schedaServizio(s.props, s.latlng, el); return; }
-    popup(el, testoServizio({ nome: s.props.nome, ind: s.props.indirizzo, prevista: s.props.prevista, cat: s.props.categoria }), false);
+    popup(el, testoServizio({ nome: s.props.nome, ind: s.props.indirizzo, prevista: s.props.prevista,
+      chiusa: !!(s.props.info && s.props.info.l), cat: s.props.categoria }), false);
   }
   // Allo zoom d'arrivo durante il volo; si rifanno solo quando cambia lo zoom.
   function disegnaServizi(conBalzo) {

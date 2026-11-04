@@ -60,6 +60,16 @@ def test_produzione_fallisce_senza_rete(tmp_path, monkeypatch):
     assert build.copia_rete(produzione=False) is None
 
 
+def test_produzione_fallisce_senza_rete_bici(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "RETE_BICI_SRC", tmp_path / "manca")
+    monkeypatch.setattr(build, "RETE_BICI_OUT", tmp_path / "out" / "rete-bici")
+    with pytest.raises(SystemExit):
+        build.copia_rete_bici(produzione=True)
+    # Per scelta (--senza-bici) o in anteprima esce col solo "a piedi".
+    assert build.copia_rete_bici(produzione=True, senza_bici=True) is None
+    assert build.copia_rete_bici(produzione=False) is None
+
+
 def test_licenze_presenti():
     assert "BSD 2-Clause" in (BASE / "vendor" / "leaflet" / "LICENSE").read_text(encoding="utf-8")
     assert "SIL OPEN FONT LICENSE" in (BASE / "vendor" / "fonts" / "OFL.txt").read_text(encoding="utf-8")

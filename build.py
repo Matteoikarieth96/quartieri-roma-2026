@@ -48,7 +48,8 @@ MAPPA_STATISTICHE_ID) e' pieno; senza, nel bundle non entra nessuno script di st
 
 Uso:
     python3 build.py               # anteprima: noindex (meta e header)
-    python3 build.py --produzione  # indicizzabile; fallisce se manca data/rete/
+    python3 build.py --produzione  # indicizzabile; fallisce se manca data/rete/ o data/rete-bici/
+    python3 build.py --produzione --senza-bici  # produzione col solo "a piedi", per scelta
 
 Variabile d'ambiente MAPPA_DIST: cartella di uscita diversa da dist/.
 """
@@ -775,13 +776,21 @@ def copia_rete(produzione=False):
     return hash_corto(file_rete)
 
 
-def copia_rete_bici():
+def copia_rete_bici(produzione=False, senza_bici=False):
     # 15 minuti in bici: stesso formato della rete pedonale, coi metri equivalenti a
-    # 15 km/h (prepara_rete_bici.py). Facoltativa anche in produzione: senza, la mappa
-    # esce col solo "a piedi" (versione a None).
+    # 15 km/h (prepara_rete_bici.py). In produzione e' obbligatoria, come la rete
+    # pedonale, cosi' un deploy non perde la bici senza accorgersene; --senza-bici la
+    # toglie per scelta. In anteprima, senza, la mappa esce col solo "a piedi".
     if RETE_BICI_OUT.exists():
         shutil.rmtree(RETE_BICI_OUT)
+    if senza_bici:
+        print("Rete bici lasciata fuori (--senza-bici): la mappa esce col solo \"a piedi\".")
+        return None
     if not (RETE_BICI_SRC / "indice.json").exists():
+        if produzione:
+            raise SystemExit("Errore: manca la rete bici " + str(RETE_BICI_SRC) + ": la build di "
+                             "produzione non esce senza i 15 minuti in bici (python3 prepara_rete_bici.py, "
+                             "oppure --senza-bici per uscire apposta col solo \"a piedi\").")
         print("ATTENZIONE: manca la rete bici " + str(RETE_BICI_SRC) + ": la mappa esce senza "
               "i 15 minuti in bici (python3 prepara_rete_bici.py).")
         return None
@@ -889,7 +898,9 @@ def copia_vista_3d():
 
 
 def main(argv=None):
-    produzione = "--produzione" in (sys.argv[1:] if argv is None else argv)
+    argomenti = sys.argv[1:] if argv is None else argv
+    produzione = "--produzione" in argomenti
+    senza_bici = "--senza-bici" in argomenti
     print("Mappa Quartieri di Roma 2026: avvio build" + (" di produzione." if produzione else "."))
 
     template = leggi_input_obbligatorio(TEMPLATE_PATH)
@@ -928,7 +939,7 @@ def main(argv=None):
         "strade": copia_strade(),
         "servizi": copia_servizi(),
         "rete": copia_rete(produzione),
-        "bici": copia_rete_bici(),
+        "bici": copia_rete_bici(produzione, senza_bici),
         "ciclabili": copia_ciclabili(),
         "copertura": copia_copertura(),
         "3d": copia_vista_3d(),

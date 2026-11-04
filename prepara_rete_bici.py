@@ -14,13 +14,19 @@ Scrive:
   percorribili in bici, negli stessi riquadri della rete pedonale. Formato di un riquadro:
   {"e": [[a, b, metri, [lat0, lon0, dlat1, dlon1, ...], metri_ritorno?], ...]}
   dove "metri" non sono la lunghezza vera ma i metri equivalenti alla velocita' di
-  riferimento (VELOCITA_RIFERIMENTO, 15 km/h): una salita di sampietrini lunga 100 m
-  "costa" come 130 m di pista. Il quinto valore c'e' solo quando il ritorno (da b ad a)
-  costa diverso dall'andata: sul senso unico si torna indietro a piedi, bici a mano.
-- data/ciclabili/ciclabili.json: le piste e le corsie ciclabili, solo geometria.
+  riferimento (VELOCITA_RIFERIMENTO, 15 km/h): 100 m di sampietrini su una via residenziale
+  (14 km/h, 10,5 sui sampietrini) "costano" come 143 m. Il quinto valore c'e' solo quando
+  il ritorno (da b ad a) costa diverso dall'andata: sul senso unico si torna indietro a
+  piedi, bici a mano.
+- data/ciclabili/ciclabili.json: le piste e le corsie ciclabili nel Comune di Roma (i tratti
+  che toccano un'area della deliberazione 150/2026), solo geometria.
   {"l": [[tipo, [lat0, lon0, dlat1, dlon1, ...]], ...]} con tipo 0 = pista separata
-  (highway=cycleway o percorso con bicycle=designated), 1 = corsia sulla strada
-  (cycleway=lane) o strada con pista affiancata disegnata insieme (cycleway=track).
+  (highway=cycleway, percorso con bicycle=designated o pista separata disegnata con la
+  strada, cycleway=track), 1 = corsia sulla strada (cycleway=lane).
+
+Le regole: nelle aree pedonali (highway=pedestrian) la bici e' ammessa (Codice della
+Strada, art. 3) e si va piano, 10 km/h; sui marciapiedi e dove c'e' bicycle=dismount si
+va a mano, 5 km/h; i sampietrini tolgono un quarto della velocita', mai sotto quella a mano.
 
 Limiti: non conosce le salite (OpenStreetMap non ha le quote) e prende i limiti di
 velocita' dal tipo di strada, non dal traffico vero.
@@ -36,6 +42,7 @@ import osmium
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # anche con python3 -I
 
+from importa_servizi import QUARTIERI_PATH, carica_poligoni, trova_area
 from prepara_rete_pedonale import (BBOX, PASSO_LAT, PASSO_LON, componente_maggiore,
                                    dentro, metri, semplifica)
 
@@ -46,6 +53,7 @@ CICLABILI_PATH = SCRIPT_DIR / "data" / "ciclabili" / "ciclabili.json"
 # La mappa usa la stessa velocita' per trasformare i metri equivalenti in minuti.
 VELOCITA_RIFERIMENTO = 15.0  # km/h
 A_MANO = 5.0                 # km/h: bici a mano sul marciapiede o contromano
+AREA_PEDONALE = 10.0         # km/h: in sella, piano, fra i pedoni
 
 NO_ACCESSO = {"no", "private", "dismount"}
 SI_BICI = {"yes", "designated", "permissive"}
@@ -95,6 +103,8 @@ def velocita(tags):
     elif hw in PEDONALI:
         if bici in SI_BICI:
             v = 11.0
+        elif hw == "pedestrian":
+            v = AREA_PEDONALE
         else:
             v = A_MANO
     else:
@@ -102,8 +112,8 @@ def velocita(tags):
     if bici == "dismount":
         v = A_MANO
     fondo = tags.get("surface")
-    if fondo in FONDO_LENTO:
-        v *= 0.75
+    if fondo in FONDO_LENTO and v > A_MANO:
+        v = max(v * 0.75, A_MANO)
     elif fondo in FONDO_STERRATO and v > A_MANO:
         v = min(v, 10.0)
     return v
@@ -127,7 +137,8 @@ def senso(tags):
 
 
 def tipo_ciclabile(tags):
-    """0 pista separata, 1 corsia o pista disegnata con la strada, None se non e' ciclabile."""
+    """0 pista separata (anche quella disegnata con la strada), 1 corsia sulla strada,
+    None se non e' ciclabile."""
     hw = tags.get("highway")
     if tags.get("bicycle") == "no" or tags.get("access") in ("no", "private"):
         return None
@@ -138,7 +149,7 @@ def tipo_ciclabile(tags):
     if hw in STRADE or hw in ("trunk", "trunk_link"):
         c = corsia_ciclabile(tags)
         if c:
-            return 1
+            return 0 if c == "track" else 1
     return None
 
 
@@ -249,12 +260,23 @@ def scrivi_rete(archi):
 
 
 def scrivi_ciclabili(ciclabili):
+    """Solo i tratti che toccano Roma: il riquadro della rete comprende anche Fiumicino,
+    Ciampino e altri comuni, che non vanno contati come piste di Roma."""
+    aree = carica_poligoni(QUARTIERI_PATH, ("codice",))
     linee = []
     km = [0.0, 0.0]
+    km_dentro = [0.0, 0.0]
     for tipo, punti in ciclabili:
         if not all(dentro(lat, lon) for lat, lon in (punti[0], punti[-1])):
             continue
-        km[tipo] += sum(metri(punti[i], punti[i + 1]) for i in range(len(punti) - 1)) / 1000
+        if not any(trova_area(lon, lat, aree) for lat, lon in punti):
+            continue
+        for i in range(len(punti) - 1):
+            m = metri(punti[i], punti[i + 1]) / 1000
+            km[tipo] += m
+            meta = ((punti[i][0] + punti[i + 1][0]) / 2, (punti[i][1] + punti[i + 1][1]) / 2)
+            if trova_area(meta[1], meta[0], aree):
+                km_dentro[tipo] += m
         linee.append([tipo, comprimi(semplifica(punti, 3.0))])
     linee.sort(key=lambda l: (l[0], l[1][0], l[1][1]))
     CICLABILI_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -263,8 +285,9 @@ def scrivi_ciclabili(ciclabili):
         "l": linee,
     }, separators=(",", ":"))
     CICLABILI_PATH.write_text(testo)
-    print("Ciclabili: %d tratti, piste %.0f km, corsie %.0f km, %.0f KB"
-          % (len(linee), km[0], km[1], len(testo) / 1e3))
+    print("Ciclabili: %d tratti, piste %.0f km, corsie %.0f km (dentro i confini di Roma: "
+          "piste %.0f km, corsie %.0f km), %.0f KB"
+          % (len(linee), km[0], km[1], km_dentro[0], km_dentro[1], len(testo) / 1e3))
 
 
 def main():

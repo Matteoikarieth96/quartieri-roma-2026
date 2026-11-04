@@ -21,6 +21,15 @@ Come si decide cosa entra:
   un'area di Roma (quartieri, rioni e zone funzionali della deliberazione 150/2026).
 - le fermate del tram hanno un punto per direzione in OpenStreetMap: quelle con lo stesso
   nome a meno di 250 m diventano una fermata sola.
+- la diramazione B1 in OpenStreetMap ha ref=B: le fermate che sono solo nella relazione
+  per Jonio (e non in quella per Rebibbia) diventano "B1", e la stazione dove i due rami
+  si separano (Bologna) ha "B e B1".
+- una stazione ferroviaria senza nessuna linea (per esempio quando i punti di fermata sono
+  stati aggiunti in OpenStreetMap ma non ancora nella relazione della linea) prende le linee
+  del binario su cui stanno i suoi punti di fermata; se neanche il binario e' in una
+  relazione, la linea viene da LINEE_MANCANTI_IN_OSM (Val d'Ala, Vigna Clara).
+- le stazioni chiuse per lavori (CHIUSE) restano sulla mappa come "chiuse per lavori",
+  con la nota, e non contano fra i servizi attivi dei 15 minuti.
 Il punto mostra il nome della stazione e, come dettaglio, le linee ("Linee A e B").
 """
 
@@ -45,6 +54,18 @@ FERROVIE = re.compile(r"^(FL[1-8]|LEX|Metromare|Roma[ -]Viterbo.*)$")
 STESSA_FERMATA_METRI = 250.0
 STAZIONE_VICINA_METRI = 250.0
 
+# Stazioni chiuse per lavori: (categoria, nome) -> nota. Da ricontrollare a ogni
+# rigenerazione (verificato il 4 novembre 2026).
+CHIUSE = {
+    ("treno", "Sacrofano"): "chiusa per i lavori di raddoppio, bus sostitutivi Cotral",
+}
+# Stazioni attive i cui binari in OpenStreetMap non sono in nessuna relazione della linea:
+# nome -> linea. Si usano solo se l'estratto non da' gia' una linea (verificato il 4/11/2026).
+LINEE_MANCANTI_IN_OSM = {
+    "Val d'Ala": "FL2",   # sui binari della FL1, ma ci fermano solo i treni FL2 per Tivoli
+    "Vigna Clara": "FL3",
+}
+
 
 def linea(tags):
     """(categoria, nome della linea) per una relazione route, o None."""
@@ -68,6 +89,8 @@ class Relazioni(osmium.SimpleHandler):
         self.linee_nodo = defaultdict(set)    # id nodo -> {(categoria, linea)}
         self.linee_via = defaultdict(set)     # id via (banchina) -> {(categoria, linea)}
         self.aree_fermata = []                # [(nodi, vie)] delle relazioni stop_area
+        self.linee_binario = defaultdict(set) # id via (binario) -> {(categoria, linea)} dei treni
+        self.rami_b = []                      # [(nodi in ordine, vie banchina)] delle relazioni B
 
     def relation(self, r):
         tags = {t.k: t.v for t in r.tags}
@@ -81,6 +104,11 @@ class Relazioni(osmium.SimpleHandler):
                 elif m.type == "w":
                     if "platform" in m.role:
                         self.linee_via[m.ref].add(l)
+                    elif l[0] == "treno" and not m.role:
+                        self.linee_binario[m.ref].add(l)
+            if l == ("metro", "B"):
+                self.rami_b.append(([m.ref for m in r.members if m.type == "n"],
+                                    {m.ref for m in r.members if m.type == "w" and "platform" in m.role}))
         elif tags.get("public_transport") == "stop_area":
             nodi = [m.ref for m in r.members if m.type == "n"]
             vie = [m.ref for m in r.members if m.type == "w"]
@@ -112,6 +140,8 @@ class Punti(osmium.SimpleHandler):
         self.vie = {}               # id via banchina -> (lat, lon) del centro
         self.stazioni = []          # dict
         self.vie_stazione = {}      # id via stazione (disegnata come area) -> indice in stazioni
+        self.fermate_treno = {}     # id punto di fermata del treno -> (nome, lat, lon)
+        self.linee_fermata = defaultdict(set)  # id punto di fermata -> linee del suo binario
 
     def node(self, n):
         if not n.location.valid():
@@ -122,6 +152,8 @@ class Punti(osmium.SimpleHandler):
             nome = n.tags.get("name")
             if nome:
                 self.nomi[n.id] = nome
+        if n.tags.get("railway") == "stop" and n.tags.get("train") == "yes" and n.tags.get("name"):
+            self.fermate_treno[n.id] = (n.tags.get("name"), lat, lon)
         if n.tags.get("railway") not in ("station", "halt", "tram_stop") \
                 and n.tags.get("public_transport") != "station":
             return
@@ -132,6 +164,11 @@ class Punti(osmium.SimpleHandler):
                                   "nodo": n.id, "via": None, "tags": tags})
 
     def way(self, w):
+        # I nodi arrivano prima delle vie: i punti di fermata sono gia' noti.
+        if w.id in self.rel.linee_binario:
+            for n in w.nodes:
+                if n.ref in self.fermate_treno:
+                    self.linee_fermata[n.ref] |= self.rel.linee_binario[w.id]
         if w.id not in self.rel.linee_via and w.tags.get("railway") not in ("station", "halt") \
                 and w.tags.get("public_transport") != "station":
             return
@@ -235,6 +272,71 @@ def stazioni_dai_punti_di_fermata(rel, pt):
     return nuove
 
 
+def ramo_b1(rel, pt):
+    """In OpenStreetMap la B1 ha ref=B. Le fermate delle relazioni che arrivano a Jonio e
+    non sono in nessuna relazione che arriva a Rebibbia diventano B1; la fermata accanto
+    al primo tratto B1 (il bivio, Bologna) ha tutte e due. Ritorna i nomi dei due gruppi."""
+    def nomi(nodi):
+        return {pt.nomi.get(n) for n in nodi}
+    jonio = [r for r in rel.rami_b if "Jonio" in nomi(r[0])]
+    rebibbia = [r for r in rel.rami_b if "Rebibbia" in nomi(r[0])]
+    if not jonio or not rebibbia:
+        return set(), set()
+    # Per nome e non per nodo: le due direzioni, e al bivio banchine diverse per ramo.
+    nomi_trono = {n for r in rebibbia for n in nomi(r[0])} - {None}
+    vie_trono = {v for r in rebibbia for v in r[1]}
+    vie_b1 = {v for r in jonio for v in r[1] if v not in vie_trono}
+    nomi_b1, nomi_bivio = set(), set()
+    for nodi, _ in jonio:
+        seq = [pt.nomi[n] for n in nodi if n in pt.nomi]
+        nomi_b1 |= set(seq) - nomi_trono
+        for a, b in zip(seq, seq[1:]):
+            if (a in nomi_trono) != (b in nomi_trono):
+                nomi_bivio.add(a if a in nomi_trono else b)
+    B, B1 = ("metro", "B"), ("metro", "B1")
+    for n, nome in pt.nomi.items():
+        if B in rel.linee_nodo.get(n, ()):
+            if nome in nomi_b1:
+                rel.linee_nodo[n] = (rel.linee_nodo[n] - {B}) | {B1}
+            elif nome in nomi_bivio:
+                rel.linee_nodo[n].add(B1)
+    for v in vie_b1:
+        if B in rel.linee_via.get(v, ()):
+            rel.linee_via[v] = (rel.linee_via[v] - {B}) | {B1}
+    return nomi_b1, nomi_bivio
+
+
+def stazioni_dal_binario(pt):
+    """Stazioni ferroviarie senza nessuna linea: prendono le linee del binario dei loro punti
+    di fermata. Solo dove nessuna stazione entro 400 m ha gia' una linea del treno, cosi'
+    una linea che passa senza fermarsi non si aggiunge a una stazione servita."""
+    con_treno = [(s["lat"], s["lon"]) for s in pt.stazioni if any(l[0] == "treno" for l in s["linee"])]
+    aggiunte = defaultdict(set)
+    nuove = []
+    for k, (nome, lat, lon) in sorted(pt.fermate_treno.items()):
+        linee = pt.linee_fermata.get(k)
+        if not linee and nome in LINEE_MANCANTI_IN_OSM:
+            linee = {("treno", LINEE_MANCANTI_IN_OSM[nome])}
+        if not linee or not dentro(lat, lon):
+            continue
+        if any(metri((lat, lon), q) <= 400 for q in con_treno):
+            continue
+        omonime = [s for s in pt.stazioni + nuove if s["nome"] == nome and s["tipo"] == "stazione"
+                   and not metri_in_osm_metro(s) and metri((lat, lon), (s["lat"], s["lon"])) <= 1000]
+        if omonime:
+            omonime[0]["linee"] |= linee
+            aggiunte[nome] |= {l[1] for l in linee}
+            continue
+        nuove.append({"tipo": "stazione", "nome": nome, "lat": lat, "lon": lon, "nodo": None,
+                      "via": None, "tags": {}, "linee": set(linee)})
+        aggiunte[nome] |= {l[1] for l in linee}
+    return nuove, aggiunte
+
+
+def metri_in_osm_metro(s):
+    return bool(s["tags"]) and metro_in_osm(s)
+
+
 def ordina_linee(linee):
     def chiave(l):
         m = re.match(r"^([A-Z]+)(\d*)$", l)
@@ -293,12 +395,20 @@ def main():
           "stop_area:", len(rel.aree_fermata))
     pt = Punti(rel)
     pt.apply_file(sys.argv[1], locations=True, idx="flex_mem")
+    nomi_b1, nomi_bivio = ramo_b1(rel, pt)
+    print("Diramazione B1:", ", ".join(sorted(nomi_b1)) or "non trovata",
+          "· bivio:", ", ".join(sorted(nomi_bivio)) or "-")
     assegna_linee(rel, pt)
     ricavate = stazioni_dai_punti_di_fermata(rel, pt)
     if ricavate:
         print("Stazioni ricavate dai punti di fermata:", ", ".join(
             "%s (%s)" % (s["nome"], ", ".join(sorted(l[1] for l in s["linee"]))) for s in ricavate))
     pt.stazioni += ricavate
+    dal_binario, aggiunte = stazioni_dal_binario(pt)
+    if aggiunte:
+        print("Linee prese dal binario:", ", ".join(
+            "%s (%s)" % (n, ", ".join(sorted(l))) for n, l in sorted(aggiunte.items())))
+    pt.stazioni += dal_binario
 
     aree = carica_poligoni(QUARTIERI_PATH, ("codice", "denominazione", "tipo", "municipio"))
     candidati = []   # (categoria, nome, lat, lon, linee)
@@ -334,8 +444,15 @@ def main():
         if not area:
             fuori[c] += 1
             continue
-        nuove.append((c, nome, area["codice"], area["municipio"], round(lat, 5), round(lon, 5),
-                      ("", dettaglio(c, linee))))
+        nota = CHIUSE.get((c, nome))
+        if nota:
+            print("  chiusa per lavori:", nome, "-", nota)
+            # "prevista" la toglie dai servizi attivi dei 15 minuti; info l = chiusa per
+            # lavori, cosi' la mappa scrive "(chiusa per lavori)" e non "(prevista)".
+            extra = ("", dettaglio(c, linee) + " · " + nota, "prevista", {"l": 1})
+        else:
+            extra = ("", dettaglio(c, linee))
+        nuove.append((c, nome, area["codice"], area["municipio"], round(lat, 5), round(lon, 5), extra))
 
     d = json.loads(OUT_PATH.read_text(encoding="utf-8"))
     altre = [(d["c"][p[0]], p[1], p[2], p[3], p[4], p[5], tuple(p[6:])) for p in d["p"]

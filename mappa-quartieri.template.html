@@ -333,7 +333,13 @@
   #legend .leg-types .lt { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
   #legend .leg-types .lt-mark { width: 13px; height: 11px; border-radius: 2px; flex: 0 0 auto; border: 1px solid oklch(0.7 0.02 30); }
   #legend .leg-types label.lt { cursor: pointer; }
-  #legend .leg-types .lt-mark.lt-bici, .q15-piste .lt-bici { width: 14px; height: 0; border: 0; border-top: 3px solid #1E7A45; border-radius: 2px; flex: 0 0 auto; }
+  #legend .leg-types .lt-mark.lt-bici, .q15-piste .lt-bici, .ciclabili-chiave .lt-bici { width: 14px; height: 0; border: 0; border-top: 3px solid #1E7A45; border-radius: 2px; flex: 0 0 auto; }
+  .ciclabili-chiave .lt-bici.lt-corsia { border-top-style: dashed; border-radius: 0; }
+  /* Cosa vogliono dire tratto pieno e tratteggio delle piste, sotto la casella */
+  .ciclabili-chiave { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 8px 20px; font-size: 11px; color: var(--muted); line-height: 1.35; }
+  .ciclabili-chiave span { display: inline-flex; align-items: center; gap: 5px; }
+  #legend .leg-types .ciclabili-chiave { margin: -1px 0 0 20px; }
+  .ciclabili-chiave[hidden] { display: none; }
 
   /* ---------- Area info card (floating) ---------- */
   #info-panel {
@@ -1053,7 +1059,9 @@
   .q15-modo button { font: inherit; font-size: 12px; font-weight: 600; border: 0; background: none; color: var(--muted); padding: 5px 13px; border-radius: 999px; cursor: pointer; }
   .q15-modo button[aria-pressed="true"] { background: var(--panel); color: var(--amaranto); box-shadow: var(--shadow-sm); }
   .q15-modo button:focus-visible { outline: 2px solid var(--amaranto); outline-offset: 1px; }
-  .q15-piste { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .q15-piste { display: flex; align-items: center; gap: 7px; margin: 0 0 4px; font-size: 12px; color: var(--muted); cursor: pointer; }
+  /* Le ipotesi della bici, in vista sotto il selettore */
+  .q15-ipotesi { margin: 0 0 8px; font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
   .q15-piste input, #legend .leg-types .lt input { margin: 0; accent-color: #1E7A45; }
   /* Icona illustrata del registro (la stessa dei marker), in piccolo. */
   .q15-ico { display: inline-flex; width: 22px; height: 22px; flex: 0 0 auto; }
@@ -2021,7 +2029,7 @@
         <div class="lv-sez" id="livelli-copertura"></div>
         <div class="lv-sez" id="livelli-municipi"><span class="field-label">Municipi</span></div>
         <div class="lv-sez" id="livelli-tipi"></div>
-        <div class="lv-sez" id="livelli-q15-sez"><button type="button" id="livelli-q15"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 22l2-6 3 3v3"/><path d="M8 12l2-4 4 1 2 4 3 1"/><path d="M10 8l-1 7"/></svg>A piedi in 15 minuti da un punto</button></div>
+        <div class="lv-sez" id="livelli-q15-sez"><button type="button" id="livelli-q15"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13" cy="4" r="2"/><path d="M10 22l2-6 3 3v3"/><path d="M8 12l2-4 4 1 2 4 3 1"/><path d="M10 8l-1 7"/></svg><span id="livelli-q15-testo">A piedi in 15 minuti da un punto</span></button></div>
       </div>
     </div>
 
@@ -2032,6 +2040,7 @@
         <div class="lt"><span class="lt-mark" id="lt-solid"></span>Quartieri e rioni</div>
         <div class="lt"><span class="lt-mark" id="lt-hatch"></span>Zone funzionali</div>
         <label class="lt" id="lt-ciclabili" hidden><input type="checkbox" id="chk-ciclabili"><span class="lt-mark lt-bici" aria-hidden="true"></span>Piste ciclabili</label>
+        <div class="ciclabili-chiave" id="lt-ciclabili-chiave" hidden><span><span class="lt-bici" aria-hidden="true"></span>pista separata</span><span><span class="lt-bici lt-corsia" aria-hidden="true"></span>corsia sulla strada</span><span>da OpenStreetMap</span></div>
       </div>
     </div>
 
@@ -3856,7 +3865,8 @@
     piedi: { vel: 80, max: 25, aria: 1, cartella: "rete", versione: "rete", come: "a piedi", titolo: "A piedi in 15 minuti",
              fonti: "Percorsi a piedi sulla rete di OpenStreetMap, a 4,8 km/h, tempi indicativi." },
     bici: { vel: 250, max: 20, aria: 15 / 16, cartella: "rete-bici", versione: "bici", come: "in bici", titolo: "In bici in 15 minuti",
-            fonti: "Percorsi in bici sulla rete di OpenStreetMap: circa 15 km/h su strade e piste, meno sui sampietrini e sugli sterrati; contromano e nelle aree pedonali a piedi, bici a mano. Le salite non sono contate: tempi indicativi." }
+            ipotesi: "Circa 15 km/h, già in sella: piano nelle aree pedonali, più lenti sui sampietrini; contromano e sui marciapiedi bici a mano. Le salite non sono contate: tempi indicativi.",
+            fonti: "Percorsi in bici sulla rete di OpenStreetMap: circa 15 km/h su strade e piste, meno sui sampietrini e sugli sterrati, 10 km/h nelle aree pedonali; contromano e sui marciapiedi a piedi, bici a mano. Le salite non sono contate: tempi indicativi." }
   };
   var q15 = { attivo: false, basi: null, modo: "piedi", reti: {}, servizi: [], gen: 0, marker: null, zoomFatto: false };
   function q15M() { return Q15_MODI[q15.modo] || Q15_MODI.piedi; }
@@ -4148,9 +4158,12 @@
       h += '<button type="button" data-modo="' + m[0] + '" aria-pressed="' + (q15.modo === m[0]) + '">' + m[1] + "</button>";
     });
     h += "</div>";
+    if (q15.modo === "bici") h += '<p class="q15-ipotesi">' + Q15_MODI.bici.ipotesi + "</p>";
     if (q15.modo === "bici" && VERSIONI.ciclabili)
       h += '<label class="q15-piste"><input type="checkbox" class="chk-piste"' + (cicl.acceso ? " checked" : "") +
-        '><span class="lt-bici" aria-hidden="true"></span>Piste ciclabili sulla mappa</label>';
+        '><span class="lt-bici" aria-hidden="true"></span>Piste ciclabili sulla mappa</label>' +
+        '<div class="ciclabili-chiave"><span><span class="lt-bici" aria-hidden="true"></span>pista separata</span>' +
+        '<span><span class="lt-bici lt-corsia" aria-hidden="true"></span>corsia sulla strada</span><span>da OpenStreetMap</span></div>';
     return h;
   }
   function q15Risultati(ll, trovati) {
@@ -4198,7 +4211,7 @@
             (lontana.linea / 1000).toLocaleString("it-IT", { maximumFractionDigits: 1 }) + " km in linea d'aria." : "") + "</p>";
         }
       }
-      if (previsti.length) sez += '<ul class="q15-prev">' + previsti.map(function (x) { return q15Riga(x, "prevista"); }).join("") + "</ul>";
+      if (previsti.length) sez += '<ul class="q15-prev">' + previsti.map(function (x) { return q15Riga(x, statoServizio({ prevista: true, info: x.s.p && x.s.p.info })); }).join("") + "</ul>";
       (perGruppo[cat.gruppo] = perGruppo[cat.gruppo] || []).push(sez + "</section>");
     });
     // Gruppi comprimibili: aperti su desktop, su telefono solo il primo. Subito si
@@ -4361,7 +4374,11 @@
     if (ev.target.classList && ev.target.classList.contains("chk-piste")) ciclabiliAccendi(ev.target.checked, true);
   });
   // Con la rete bici il tasto dice che c'e' anche la bici.
-  if (VERSIONI.bici) document.getElementById("q15-toggle-testo").textContent = "15 minuti a piedi o in bici";
+  // Anche sul telefono, dove il tasto della mappa non c'e': foglio Livelli.
+  if (VERSIONI.bici) {
+    document.getElementById("q15-toggle-testo").textContent = "15 minuti a piedi o in bici";
+    document.getElementById("livelli-q15-testo").textContent = "A piedi o in bici in 15 minuti da un punto";
+  }
 
   // Telefono: i 15 minuti partono dall'azione della scheda, sull'area scelta (dal centro
   // del tracciato se c'e' una via aperta, come la pillola su desktop), o dal foglio Livelli
@@ -4439,6 +4456,7 @@
   var ciclRenderer = L.canvas({ pane: "ciclabiliPane", padding: 0.3 });
   var chkCiclabili = document.getElementById("chk-ciclabili");
   document.getElementById("lt-ciclabili").hidden = !VERSIONI.ciclabili;
+  document.getElementById("lt-ciclabili-chiave").hidden = !VERSIONI.ciclabili;
   function ciclabiliCarica() {
     if (!cicl.dati) {
       cicl.dati = q15Json(conVersione("ciclabili/ciclabili.json", "ciclabili")).then(function (d) {
@@ -5183,7 +5201,8 @@
         id: "scheda", posizione: "sopra",
         target: function () { return infoPanelEl; },
         titolo: "La scheda dell'area",
-        testo: "Tipo, municipio e superficie. Servizi accende le icone sulla mappa, 15 min mostra cosa raggiungi a piedi, Condividi manda il link. Tirala su per i dettagli.",
+        testo: "Tipo, municipio e superficie. Servizi accende le icone sulla mappa, 15 min mostra cosa raggiungi " +
+          (VERSIONI.bici ? "a piedi o in bici" : "a piedi") + ", Condividi manda il link. Tirala su per i dettagli.",
         prima: function () { return apriTrastevere(tr); }
       },
       {
@@ -6150,7 +6169,7 @@
     var info = p.info || {}, h = "";
     var cat = SERVIZI_SINGOLARI[p.categoria] || p.categoria;
     h += '<div class="ss-testa">' + iconaServizioSemplice(p.categoria) + '<span class="ss-cat">' + escapeHtml(cat) + "</span></div>";
-    h += '<h2 id="scheda-servizio-titolo" tabindex="-1">' + escapeHtml(p.nome) + (p.prevista ? " (prevista)" : "") + "</h2>";
+    h += '<h2 id="scheda-servizio-titolo" tabindex="-1">' + escapeHtml(p.nome) + (p.prevista ? " (" + statoServizio(p) + ")" : "") + "</h2>";
     // L'istituto di riferimento a volte e' solo un nome ("Giovanni XXIII") o una via ("Via L. Rizzo 1"):
     // senza sigla davanti sembrerebbe un indirizzo, si premette "Istituto".
     var ic = info.ic && !/^(I\.?\s?C\.?|I\.?\s?I\.?\s?S\.?|C\.?\s?D\.?|Istituto|Liceo|Convitto|Circolo|Scuola)\b/i.test(info.ic) ? "Istituto " + info.ic : info.ic;
@@ -6160,14 +6179,14 @@
     var e = p.codice_area ? entryDiCodice(p.codice_area) : null;
     var zona = [e ? e.feature.properties.denominazione : "", p.municipio ? "Municipio " + p.municipio : ""].filter(Boolean).join(" · ");
     if (zona) h += '<p class="ss-riga">' + escapeHtml(zona) + "</p>";
-    if (info.l) h += '<p class="ss-riga">Chiuso per lavori</p>';
+    if (info.l && !p.prevista) h += '<p class="ss-riga">Chiuso per lavori</p>';
     else {
       var cap = [];
       if (info.p) cap.push(pluraleScheda(info.p, "posto", "posti"));
       if (info.z) cap.push(pluraleScheda(info.z, "sezione", "sezioni"));
       if (cap.length) h += '<p class="ss-riga">' + cap.join(" · ") + "</p>";
     }
-    if (p.minuti) h += '<p class="ss-riga ss-min">' + p.minuti + " min " + (p.come || "a piedi") + " dal punto</p>";
+    if (p.minuti) h += '<p class="ss-riga ss-min">' + (p.come === "in bici" ? "circa " : "") + p.minuti + " min " + (p.come || "a piedi") + " dal punto</p>";
     // Farmacie e pronto soccorso: la mappa non sa orari, turni e attese.
     if (p.categoria === "farmacie" || /^pronto_soccorso/.test(p.categoria))
       h += '<p class="ss-riga ss-det">Orari e turni non sono sulla mappa: verificali prima di andare</p>';
@@ -6319,6 +6338,12 @@
   // Un marker e' un pulsante: Tab lo raggiunge, Invio e Spazio lo aprono.
   // Se il nome coincide con la categoria (le farmacie si chiamano tutte "Farmacia"),
   // nelle etichette va l'indirizzo, che le distingue.
+  // Stato non attivo: "prevista" per i servizi ancora da aprire, "chiusa per lavori" per
+  // quelli che ci sono ma sono chiusi (info.l), come le stazioni della tabella CHIUSE.
+  function statoServizio(props) {
+    if (!props.prevista) return "";
+    return props.info && props.info.l ? "chiusa per lavori" : "prevista";
+  }
   function nomeServizio(props) {
     return (props.nome === (SERVIZI_SINGOLARI[props.categoria] || props.categoria) && props.indirizzo) ? props.indirizzo : props.nome;
   }
@@ -6342,11 +6367,11 @@
     var html = '<div class="' + classe + '" ' + dati + ' style="' + stile + '">' + svgConIdUnici(ICONE_SVG[punto.props.categoria]) + "</div>";
     var icon = L.divIcon({ className: "servizio-divicon", html: html, iconSize: [dim, dim], iconAnchor: [dim / 2, dim] });
     var marker = L.marker(posizione || punto.latlng, { icon: icon, pane: "serviziPane", keyboard: false, riseOnHover: true });
-    var testo = escapeHtml(nomeServizio(punto.props)) + (punto.props.prevista ? " (prevista)" : "") + '<span class="st-cat">' +
+    var testo = escapeHtml(nomeServizio(punto.props)) + (punto.props.prevista ? " (" + statoServizio(punto.props) + ")" : "") + '<span class="st-cat">' +
       escapeHtml(SERVIZI_SINGOLARI[punto.props.categoria] || punto.props.categoria) +
       (punto.props.minuti ? " · " + escapeHtml(q15Minuti(punto.props.minuti)) + " " + (punto.props.come || "a piedi") : "") + "</span>";
     marker.bindTooltip(testo, { direction: "top", offset: [0, -dim * 0.85], className: "servizio-tooltip" });
-    marcatoreTastiera(marker, (SERVIZI_SINGOLARI[punto.props.categoria] || punto.props.categoria) + ": " + nomeServizio(punto.props) + (punto.props.prevista ? " (prevista)" : ""));
+    marcatoreTastiera(marker, (SERVIZI_SINGOLARI[punto.props.categoria] || punto.props.categoria) + ": " + nomeServizio(punto.props) + (punto.props.prevista ? " (" + statoServizio(punto.props) + ")" : ""));
     // Il clic apre la scheda del servizio (il tooltip col nome resta solo al passaggio del mouse).
     marker.on("click", function () {
       marker.closeTooltip();
