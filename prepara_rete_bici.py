@@ -32,6 +32,7 @@ Limiti: non conosce le salite (OpenStreetMap non ha le quote) e prende i limiti 
 velocita' dal tipo di strada, non dal traffico vero.
 """
 
+import datetime
 import json
 import math
 import sys
@@ -68,15 +69,34 @@ FONDO_LENTO = {"sett", "cobblestone", "unhewn_cobblestone", "cobblestone:flatten
 FONDO_STERRATO = {"unpaved", "gravel", "dirt", "ground", "grass", "sand", "mud",
                   "fine_gravel", "compacted", "pebblestone", "earth", "woodchips"}
 LATI_CICLABILE = ("cycleway", "cycleway:both", "cycleway:left", "cycleway:right")
+# Corsia preferenziale aperta alle bici: si pedala meglio, ma non e' una corsia ciclabile
+# (non si disegna fra le piste).
+CORSIA_BUS = {"share_busway", "opposite_share_busway", "shared_busway"}
+# Tratti non ancora realizzati o non piu' in uso: fuori dalla rete e dalle piste.
+FUORI_USO = ("construction", "proposed", "disused", "abandoned")
+
+
+def in_uso(tags):
+    """False per una via in costruzione, progettata, dismessa o abbandonata, anche quando
+    resta highway=cycleway con construction=*, o con l'apertura in una data futura."""
+    if tags.get("highway") in ("construction", "proposed"):
+        return False
+    if any(tags.get(k, "no") != "no" for k in FUORI_USO):
+        return False
+    apertura = tags.get("opening_date")
+    return not (apertura and apertura > datetime.date.today().isoformat())
 
 
 def corsia_ciclabile(tags):
-    """'track', 'lane' o None per una strada con la ciclabile disegnata sulla strada stessa."""
+    """'track', 'lane', 'bus' o None per una strada con la ciclabile (o la corsia
+    preferenziale aperta alle bici) disegnata sulla strada stessa."""
     valori = {tags.get(k) for k in LATI_CICLABILE}
     if "track" in valori or "opposite_track" in valori:
         return "track"
-    if valori & {"lane", "opposite_lane", "shared_busway"}:
+    if valori & {"lane", "opposite_lane"}:
         return "lane"
+    if valori & CORSIA_BUS:
+        return "bus"
     return None
 
 
@@ -84,9 +104,12 @@ def velocita(tags):
     """Velocita' in bici (km/h) su una via, o None se in bici non si passa (neanche a mano)."""
     hw = tags.get("highway")
     bici = tags.get("bicycle")
-    if hw == "steps" or bici == "no":
+    if hw == "steps" or bici == "no" or not in_uso(tags):
         return None
-    if tags.get("access") in NO_ACCESSO and bici not in SI_BICI:
+    if (tags.get("access") in NO_ACCESSO or tags.get("vehicle") in NO_ACCESSO) and bici not in SI_BICI:
+        return None
+    # strade extraurbane principali (motorroad): vietate alle bici
+    if tags.get("motorroad") == "yes" and bici not in SI_BICI:
         return None
     if hw in ("motorway", "motorway_link") or (hw in ("trunk", "trunk_link") and bici not in SI_BICI):
         return None
@@ -140,7 +163,10 @@ def tipo_ciclabile(tags):
     """0 pista separata (anche quella disegnata con la strada), 1 corsia sulla strada,
     None se non e' ciclabile."""
     hw = tags.get("highway")
-    if tags.get("bicycle") == "no" or tags.get("access") in ("no", "private"):
+    if tags.get("bicycle") == "no" or not in_uso(tags):
+        return None
+    # access=no con bicycle=designated: il ciclopedonale chiuso alle auto resta una pista
+    if tags.get("access") in ("no", "private") and tags.get("bicycle") not in SI_BICI:
         return None
     if hw == "cycleway":
         return 0
@@ -148,7 +174,7 @@ def tipo_ciclabile(tags):
         return 0
     if hw in STRADE or hw in ("trunk", "trunk_link"):
         c = corsia_ciclabile(tags)
-        if c:
+        if c in ("track", "lane"):
             return 0 if c == "track" else 1
     return None
 
